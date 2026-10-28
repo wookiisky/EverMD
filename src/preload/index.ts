@@ -83,6 +83,10 @@ export interface ElectronAPI {
   onSiblingsChanged: (callback: (files: SiblingFile[]) => void) => void
   onToggleFilePanel: (callback: () => void) => void
   onToggleSourceMode: (callback: () => void) => void
+  /** 隐藏空行仅改变渲染显示，偏好由渲染层持久化。 */
+  onSetHideBlankLines: (callback: (enabled: boolean) => void) => void
+  /** 同步原生菜单的勾选状态。 */
+  reportHideBlankLines: (enabled: boolean) => Promise<void>
   setEditorFont: (prefs: { family: string; size: number }) => Promise<void>
   listSystemFonts: () => Promise<string[]>
   onEditorFontChanged: (callback: (prefs: { family: string; size: number }) => void) => void
@@ -228,6 +232,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onToggleSourceMode: (callback: () => void) => {
     ipcRenderer.on('toggle-source-mode', () => callback())
   },
+  onSetHideBlankLines: (callback: (enabled: boolean) => void) => {
+    ipcRenderer.on('set-hide-blank-lines', (_event, enabled: boolean) => callback(enabled))
+  },
+  reportHideBlankLines: (enabled: boolean) => ipcRenderer.invoke('report-hide-blank-lines', enabled),
   setEditorFont: (prefs: { family: string; size: number }) => {
     return ipcRenderer.invoke('set-editor-font', prefs)
   },

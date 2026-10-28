@@ -1,4 +1,4 @@
-import { createEditor, focusEditor, getMarkdown, getEditorView, getEditorScroller, onEditorJumpPhase, setMarkdown, setEditorEditable, getEditorState, restoreEditorState, applyMarkdownStyle, runFormatCommand, jumpToLine, jumpToHeading, setCleanExport, setDocumentFileUrl, type FormatCommandId } from './editor/editor'
+import { createEditor, focusEditor, getMarkdown, getEditorView, getEditorScroller, onEditorJumpPhase, setMarkdown, setEditorEditable, getEditorState, restoreEditorState, applyMarkdownStyle, runFormatCommand, jumpToLine, jumpToHeading, setCleanExport, setDocumentFileUrl, setEditorHideBlankLines, type FormatCommandId } from './editor/editor'
 import { markdownForWord } from './editor/mermaid-export'
 import { withDiagramZoomPaused } from './editor/mermaid-bridge'
 import { jumpToSourceLine, sourcePositionTop } from './editor/source-line'
@@ -146,6 +146,22 @@ function applyPageWidth(width: string): void {
 
 applyPageWidth(localStorage.getItem(PAGE_WIDTH_KEY) ?? 'standard')
 
+const HIDE_BLANK_LINES_KEY = 'colamd-hide-blank-lines'
+// 偏好属于应用视图，不随某个标签页的 EditorState 快照恢复。
+let hideBlankLines = localStorage.getItem(HIDE_BLANK_LINES_KEY) === '1'
+
+// 开关只派发显示效果，不更新正文、不设置 dirty、不调度保存。
+function applyHideBlankLines(enabled: boolean): void {
+  hideBlankLines = enabled
+  localStorage.setItem(HIDE_BLANK_LINES_KEY, enabled ? '1' : '0')
+  setEditorHideBlankLines(enabled)
+  void window.electronAPI.reportHideBlankLines(enabled)
+}
+
+window.addEventListener('storage', (event) => {
+  if (event.key === HIDE_BLANK_LINES_KEY) applyHideBlankLines(event.newValue === '1')
+})
+
 function setMarkdownProgrammatically(content: string, flushHistory = false): void {
   // Every way a document can be replaced at once ends up here (open, external
   // write, new file). The deck's pages are positions in the document that is
@@ -154,6 +170,7 @@ function setMarkdownProgrammatically(content: string, flushHistory = false): voi
   applyingProgrammaticChange = true
   try {
     setMarkdown(content, flushHistory)
+    setEditorHideBlankLines(hideBlankLines)
   } finally {
     applyingProgrammaticChange = false
   }
@@ -647,6 +664,8 @@ async function activateTab(id: string): Promise<void> {
         applyingProgrammaticChange = false
       }
     }
+    // 标签快照可能来自切换开关之前，恢复后始终采用当前应用偏好。
+    setEditorHideBlankLines(hideBlankLines)
     // The tab's own unsaved state decides, never the swap itself.
     dirty = target.dirty
     reportDirty()
@@ -1909,6 +1928,7 @@ async function init(): Promise<void> {
     if (!applyingProgrammaticChange) setDirty()
     scheduleOutlineUpdate()
   })
+  applyHideBlankLines(hideBlankLines)
   updateWordCount()
   editorReady = true
   resetDirty()
@@ -1974,6 +1994,7 @@ async function init(): Promise<void> {
 
   sourceToggleBtnEl().addEventListener('click', toggleSourceMode)
   api.onToggleSourceMode(() => toggleSourceMode())
+  api.onSetHideBlankLines(applyHideBlankLines)
   // Source-mode edits update the word count and mark the doc dirty in real time
   sourceEl().addEventListener('input', () => {
     setDirty()

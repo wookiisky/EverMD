@@ -31,6 +31,7 @@ import { renderMermaid, attachDiagramZoom, detachDiagramZoom, isDiagramZoomed } 
 import { sanitizeHTML, cleanStyle } from './html-sanitize'
 import { footnoteDefinitions, footnoteNumbers, FOOTNOTE_REF_RE } from './footnotes'
 import { isChinese } from '../ui-language'
+import { hideBlankLinesField, hiddenBlankLineNumbers } from './blank-line-visibility'
 
 /** 给区间加样式类，不隐藏任何字符。 */
 const MARK = Decoration.mark.bind(Decoration)
@@ -1294,6 +1295,12 @@ function buildDecorations(state: EditorState, flash: { from: number; to: number 
   // 公式放最后：它覆盖区间，其它装饰不该插进它里面
   collectMath(state, ranges)
 
+  // 空行仍在文档中，只压缩行盒；焦点进入的空行临时恢复，导出始终保留原始空行。
+  for (const number of hiddenBlankLineNumbers(state, editorFocused(state), exportingCleanly(state))) {
+    const from = state.doc.line(number).from
+    ranges.push({ from, to: from, deco: BLOCK('cm-md-blank-line-hidden') })
+  }
+
   // 排序键必须带上 startSide：RangeSetBuilder 只接受按 (from, startSide) 递增的顺序，
   // 原来只按 (from, to) 排，同一段区间上挂了两种装饰时就翻车。
   //
@@ -1329,7 +1336,9 @@ export const livePreviewField = StateField.define<DecorationSet>({
     const wasFocused = tr.startState.field(editorFocusField, false) ?? false
     const clean = tr.state.field(cleanExportField, false) ?? false
     const wasClean = tr.startState.field(cleanExportField, false) ?? false
-    if (!tr.docChanged && !tr.selection && !flash && !parsed && !rebased && focused === wasFocused && clean === wasClean) return deco
+    const hideBlankLines = tr.state.field(hideBlankLinesField, false) ?? false
+    const hidBlankLines = tr.startState.field(hideBlankLinesField, false) ?? false
+    if (!tr.docChanged && !tr.selection && !flash && !parsed && !rebased && focused === wasFocused && clean === wasClean && hideBlankLines === hidBlankLines) return deco
     return buildDecorations(tr.state, flashValue)
   },
   provide: (field) => EditorView.decorations.from(field),
@@ -1386,13 +1395,13 @@ const parseRefresh = ViewPlugin.fromClass(class {
   }
 })
 
-// 这几个必须一起装进编辑器：`livePreviewField` 要读前两个 field，
-// 读不到就当成「没有焦点、不在导出」，那一行源码就永远不会显形；
+// 这些视图状态必须先于 `livePreviewField` 安装，它据此处理焦点、导出和空行显示；
 // `parseRefresh` 负责在解析推进后叫它重算。
 export const livePreview: Extension = [
   editorFocusField,
   cleanExportField,
   documentFileUrlField,
+  hideBlankLinesField,
   livePreviewField,
   parseRefresh,
 ]

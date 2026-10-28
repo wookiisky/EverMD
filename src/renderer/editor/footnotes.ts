@@ -9,6 +9,8 @@ export const FOOTNOTE_REF_RE = /\[\^([^\]\s]+)\]/g
 
 /** 定义行：`[^note]: 内容`（最多三个空格缩进）。 */
 const FOOTNOTE_DEF_LINE_RE = /^ {0,3}\[\^([^\]\s]+)\]:[ \t]*(.*)$/
+/** 缩进续段与定义行之间允许有空行。 */
+const FOOTNOTE_CONTINUATION_LINE_RE = /^[ \t]+\S/
 
 /**
  * 扫出所有脚注定义。
@@ -30,7 +32,7 @@ export function footnoteDefinitions(text: string): Map<string, string> {
     }
     if (current === null) continue
     // 缩进或空行算续行，否则这条定义结束
-    if (/^[ \t]+\S/.test(raw)) {
+    if (FOOTNOTE_CONTINUATION_LINE_RE.test(raw)) {
       const continuation = raw.trim()
       definitions.set(current, `${definitions.get(current) ?? ''} ${continuation}`.trim())
       continue

@@ -21,6 +21,7 @@ import { runFormatCommand as runFormat, type FormatCommandId } from './format-co
 import { isChinese } from '../ui-language'
 import { headingAnchorLine } from './heading-anchor'
 import { isDiagramZoomed } from './mermaid-bridge'
+import { hideBlankLinesField, setHideBlankLinesEffect } from './blank-line-visibility'
 
 // katex 的样式表仍要引，公式 widget 里渲出来的 HTML 靠它排版。
 import 'katex/dist/katex.min.css'
@@ -650,6 +651,13 @@ export function focusEditor(): void {
 // （renderer/slideshow.ts）；这是第二道锁，万一有键漏过来，也落不到没人看得见的页面上。
 export function setEditorEditable(editable: boolean): void {
   handle?.setEditable(editable)
+}
+
+/** 同步全局空行显示偏好，仅派发视图 effect，不触发文档编辑。 */
+export function setEditorHideBlankLines(enabled: boolean): void {
+  const view = handle?.getView()
+  if (!view || view.state.field(hideBlankLinesField, false) === enabled) return
+  view.dispatch({ effects: setHideBlankLinesEffect.of(enabled) })
 }
 
 // 多个标签共用一个编辑器实例。编辑器状态带着文档、选区和撤销栈，

@@ -1482,6 +1482,8 @@ let currentTheme = 'elegant'
 // View menu's checkmarks tell the truth; main keeps no copy of it on disk.
 let currentPanelSide: 'left' | 'right' = 'right'
 let currentPageWidth: 'narrow' | 'standard' | 'wide' = 'standard'
+// 渲染层持久化视图偏好，主进程只同步原生菜单勾选状态。
+let currentHideBlankLines = false
 let themeMenuItems: Array<{ id: string; theme: string }> = []
 // Enumerate installed system font families for the font settings dialog (#7752855).
 // Uses NSFontManager via JXA — the same source as the macOS font panel — so the
@@ -1633,6 +1635,12 @@ ipcMain.handle('report-page-width', (_event, width: unknown) => {
   updatePageWidthMenuChecks()
 })
 
+ipcMain.handle('report-hide-blank-lines', (_event, enabled: boolean) => {
+  currentHideBlankLines = enabled
+  const item = Menu.getApplicationMenu()?.getMenuItemById('hide-blank-lines')
+  if (item) item.checked = enabled
+})
+
 // The Windows window controls are painted by the OS inside our own row, so their
 // strip has to carry the theme's chrome colour. The renderer resolves the live
 // computed colours and reports them on every theme change; the overlay only
@@ -1780,7 +1788,7 @@ function buildMenu(): void {
         recentOpen: '最近打开', restoreOnLaunch: '启动时打开上次文档', clearRecent: '清除最近记录', noRecent: '没有最近打开的文件',
         exportPDF: '导出 PDF...', exportSlidesPDF: '导出幻灯片 PDF...', exportHTML: '导出 HTML...', exportWord: '导出 Word...', exportImageDesktop: '导出图片（电脑阅读）...', exportImageMobile: '导出图片（手机阅读）...', find: '查找',
         setDefault: '设置为默认应用...',
-        filePanel: '显示 / 隐藏文件列表', sourceMode: '切换 Markdown 源码',
+        filePanel: '显示 / 隐藏文件列表', sourceMode: '切换 Markdown 源码', hideBlankLines: '隐藏空行',
         panelSide: '文件列表位置', panelSideLeft: '在左侧', panelSideRight: '在右侧',
         pageWidth: '正文宽度', pageWidthNarrow: '窄', pageWidthStandard: '标准', pageWidthWide: '宽',
         light: '浅色', dark: '深色', elegant: '雅致',
@@ -1802,7 +1810,7 @@ function buildMenu(): void {
         recentOpen: 'Open Recent', restoreOnLaunch: 'Reopen last document at launch', clearRecent: 'Clear Recent', noRecent: 'No recent files',
         exportPDF: 'Export PDF...', exportSlidesPDF: 'Export Slides PDF...', exportHTML: 'Export HTML...', exportWord: 'Export Word...', exportImageDesktop: 'Export Image (Desktop)...', exportImageMobile: 'Export Image (Mobile)...', find: 'Find',
         setDefault: 'Set as Default...',
-        filePanel: 'Show / Hide File List', sourceMode: 'Toggle Markdown Source',
+        filePanel: 'Show / Hide File List', sourceMode: 'Toggle Markdown Source', hideBlankLines: 'Hide Blank Lines',
         panelSide: 'File List Position', panelSideLeft: 'On the Left', panelSideRight: 'On the Right',
         pageWidth: 'Text Width', pageWidthNarrow: 'Narrow', pageWidthStandard: 'Standard', pageWidthWide: 'Wide',
         light: 'Light', dark: 'Dark', elegant: 'Elegant',
@@ -2021,6 +2029,13 @@ function buildMenu(): void {
           label: labels.sourceMode,
           accelerator: 'CmdOrCtrl+/',
           click: () => sendToFocused('toggle-source-mode')
+        },
+        {
+          id: 'hide-blank-lines',
+          label: labels.hideBlankLines,
+          type: 'checkbox',
+          checked: currentHideBlankLines,
+          click: (item) => sendToFocused('set-hide-blank-lines', item.checked)
         },
         { type: 'separator' },
         { label: labels.fontSettings, click: () => sendToFocused('open-font-settings') },

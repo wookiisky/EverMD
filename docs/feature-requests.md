@@ -44,6 +44,16 @@ The two items below are the ones actually blocking us. Everything else on this p
 
 ## Implemented On Main
 
+### 持久化的隐藏空行视图
+
+**来源：** 用户需求（2026-10-26），2026-10-28 确认改为纯显示偏好。
+
+**范围：**「视图 → 隐藏空行」是默认关闭的勾选项，选择后立即应用于当前渲染视图，打开文件、切换标签或重启后沿用同一偏好。正文空白行、段落分隔及只含 `>`、`> >` 的引用空行在视觉上收起，保留原文中的段落和引用结构；代码、公式、HTML 和 YAML 属性区内部沿用原有显示。正在编辑的空行临时显示。入口复用原生菜单，中英同步，不增加常驻控件。
+
+**数据约定：** 只修改编辑器装饰，不改 Markdown 缓冲区，不标记已编辑，不触发自动保存，也不进入撤销历史。源码模式、复制的 Markdown 和保存内容保留原文。编辑正文后保存，只写入用户真正改过的文字，隐藏的空行仍然保留。关闭选项恢复完整显示。
+
+**实现：** 复用 CodeMirror 完整解析和行装饰保护特殊块，按文档缓存空行候选。开关由渲染层持久化并同步原生菜单，恢复标签状态后重新采用应用当前偏好；导出时恢复正常空行显示。`verify:blank-lines` 检查候选、焦点、装饰及撤销栈，`verify:blank-lines-ui` 验证真实菜单、行高度、字节保真、编辑后保存、跨标签与重启持久化。
+
 ### Inline HTML pairs (#125)
 
 `<span style="color:red">文字</span>` in the middle of a paragraph styles the text between the tags. A matched pair on one line hides both tags and paints the inner text with a mark carrying the sanitized style; the text stays editable. Fixed 2026-10-08 (`8615cc0`), with `verify:features` asserting the computed colour. The earlier reply that said it already worked was wrong, and the issue was reopened with a correction.
