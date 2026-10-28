@@ -390,12 +390,14 @@
  * 点击行为认 `data-href`，不依赖真 `<a>`：换成 `<a>` 就得把文字整个换成 widget，
  * 文字里的加粗、行内代码会跟着没掉。
  */
-.cm-content .cm-md-link {
+.cm-content .cm-md-link,
+.cm-content .cm-md-table-widget a[data-href] {
   color: var(--link-color);
   cursor: pointer;
 }
 
-.cm-content .cm-md-link:hover {
+.cm-content .cm-md-link:hover,
+.cm-content .cm-md-table-widget a[data-href] {
   text-decoration: underline;
 }
 

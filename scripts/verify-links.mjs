@@ -175,7 +175,7 @@ async function runtimeChecks() {
   const sourceText = '# Source\n\n[相对链接](中文%20空格.md)\n\n[子目录](child/child.md)\n\n[标题](中文%20空格.md#目标标题)\n\n' +
     `[行号](lines.md:147)\n\n[文件行号](${pathToFileURL(lineFile).href}:147)\n\n[源码行号](large.md:147)\n\n[越界行号](lines.md:9999)\n\n` +
     `[File URL](${pathToFileURL(target).href})\n\n[网页](https://example.com)\n\n[缺失](missing.md)\n\n[文内](#source)\n\n[HTML锚点](anchors.md#1-先区分五类对象)\n\n` +
-    '| Link |\n| --- |\n| [表格链接](中文%20空格.md) |\n| [表格文内](#source) |\n\n' +
+    '| [表格网页](https://example.com) |\n| --- |\n| [表格链接](中文%20空格.md) |\n| [表格文内](#source) |\n| [空地址]() |\n\n' +
     '<div><a href="中文%20空格.md">HTML块链接</a></div>\n'
   const anchorText = '# Anchors\n\n' +
     '[文内显式](#1-先区分五类对象) · [块内显式](#deep-block) · [标题显式](#heading-explicit) · [未闭合](#unclosed) · [实体](#a%26b) · [外壳同名](#titlebar) · [无目标](#missing-anchor)\n\n' +
@@ -342,6 +342,36 @@ async function runtimeChecks() {
     for (const theme of ['light', 'dark']) {
       await evaluate(`themeChecks.applyTheme(${JSON.stringify(theme)})`)
       await wait(`document.body.classList.contains('theme-${theme}')`, `${theme} theme applied`)
+      await openSource()
+      await wait(`!!document.querySelector('.cm-md-table-widget')`, `${theme}: table rendered`)
+      await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 0, y: 0 })
+      const tableStyles = await evaluate(`(() => {
+        const table = document.querySelector('.cm-md-table-widget');
+        const probe = document.createElement('span');
+        probe.style.color = 'var(--link-color)'; table.appendChild(probe);
+        const linkColor = getComputedStyle(probe).color; probe.remove();
+        return [...table.querySelectorAll('a')].map(a => {
+          const style = getComputedStyle(a);
+          return { label: a.textContent, active: a.hasAttribute('data-href'),
+            underline: style.textDecorationLine.includes('underline'), color: style.color,
+            cursor: style.cursor, hovered: a.matches(':hover'), linkColor };
+        });
+      })()`)
+      check(`${theme}: 表头和正文中的三类链接均已渲染`, () => {
+        assert.deepEqual(tableStyles.filter(a => a.active).map(a => a.label), ['表格网页', '表格链接', '表格文内'])
+      })
+      for (const style of tableStyles) {
+        check(`${theme}: ${style.label}默认展示正确`, () => {
+          assert.equal(style.hovered, false)
+          assert.equal(style.underline, style.active)
+          if (style.active) {
+            assert.equal(style.color, style.linkColor)
+            assert.equal(style.cursor, 'pointer')
+          } else {
+            assert.notEqual(style.cursor, 'pointer')
+          }
+        })
+      }
       for (const [label, selector] of [['表格链接', '.cm-md-table-widget'], ['HTML块链接', '.cm-md-html a[href]']]) {
         await openSource(); await click(label)
         await wait(`document.title==='中文 空格.md'`, `${theme}: plain click ${label}`)
@@ -350,9 +380,12 @@ async function runtimeChecks() {
         check(`${theme}: plain click ${label} opens its file without source editing`, () => {})
       }
       const externalCount = readFileSync(events, 'utf8').split('\n').filter(line=>line.includes('"external":')).length
-      await click('网页'); await sleep(150)
+      await click('表格网页'); await sleep(150)
       const nextExternalCount = readFileSync(events, 'utf8').split('\n').filter(line=>line.includes('"external":')).length
-      check(`${theme}: plain click opens a web link`, () => assert.equal(nextExternalCount, externalCount + 1))
+      check(`${theme}: 单击表格网页链接调用浏览器`, () => assert.equal(nextExternalCount, externalCount + 1))
+      await click('表格文内')
+      await wait(`document.querySelector('.cm-md-jump-flash')?.textContent.includes('Source')`, `${theme}: table anchor`)
+      check(`${theme}: 单击表格文内链接跳转到标题`, () => {})
       await click('HTML锚点')
       await wait(`document.title==='anchors.md' && ${visibleText('ANCHOR_TARGET')}`, `${theme}: cross-file HTML anchor`)
       for (const [label, text] of [['标题显式', 'HTML_HEADING_TARGET'], ['块内显式', 'DEEP_BLOCK_TARGET']]) {
