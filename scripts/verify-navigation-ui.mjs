@@ -503,6 +503,39 @@ try {
   await waitFor("document.getElementById('source-editor').selectionStart === 102", '源码全部替换挪错了中间段落的历史位置')
   check('源码全部替换后后退仍定位到未修改的中间段落', await evaluate(renderer,
     `document.getElementById('source-editor').value === ${JSON.stringify(replaceText.replaceAll('X', 'Y'))}`))
+  // 关闭目标标签后从空白标签重开，移除空白历史不能让回放错认相邻记录。
+  await evaluate(renderer, "document.querySelector('.search-close').click()")
+  for (const sourceMode of [false, true]) {
+    const name = sourceMode ? '空白回放源码' : '空白回放渲染'
+    const path = join(dir, `${name}.md`)
+    // 大文件重开走真实源码模式，分别覆盖两种恢复路径。
+    const content = sourceMode ? fixture + '大文件源码。'.repeat(90000) : fixture
+    writeFileSync(path, content)
+    const saved = { bytes: readFileSync(path), mtime: statSync(path).mtimeMs }
+    await evaluate(main, `require('electron').BrowserWindow.getAllWindows()[0].webContents.send('open-in-new-tab', ${JSON.stringify(path)})`)
+    await waitFor(`document.querySelector('.tab-entry.active').dataset.fullName === ${JSON.stringify(name)}`, '空白回放目标文件没有打开')
+    const caret = sourceMode ? "document.getElementById('source-editor').selectionStart" : `${view}.state.selection.main.head`
+    const initialPosition = await evaluate(renderer, caret)
+    const target = fixture.split('\n').slice(0, 39).reduce((offset, line) => offset + line.length + 1, 0)
+    if (sourceMode) {
+      await waitFor("document.getElementById('source-editor').classList.contains('visible')", '大文件未进入源码模式')
+      await evaluate(renderer, `document.getElementById('source-editor').setSelectionRange(${target}, ${target})`)
+      await pause(650)
+    } else await moveTo(40)
+    await evaluate(renderer, "document.querySelector('.tab-new-btn').click()")
+    await waitFor(`${view}.state.doc.length === 0 && !document.getElementById('source-editor').classList.contains('visible')`, '空白回放标签没有创建')
+    await evaluate(renderer, `Array.from(document.querySelectorAll('.tab-entry')).find(el => el.dataset.fullName === ${JSON.stringify(name)}).querySelector('.tab-entry-close').click()`)
+    await waitFor(`!Array.from(document.querySelectorAll('.tab-entry')).some(el => el.dataset.fullName === ${JSON.stringify(name)})`, '空白回放目标标签没有关闭')
+    await clickMenu('navigation-back')
+    await waitFor(`document.querySelector('.tab-entry.active').dataset.fullName === ${JSON.stringify(name)} && ${caret} === ${target}`, '从空白标签重开文件后丢失目标位置')
+    check(`${name}在移除空白历史后恢复目标位置`, true)
+    await clickMenu('navigation-back')
+    await waitFor(`${caret} === ${initialPosition}`, '移除空白历史后跳过了目标文件的较早位置')
+    await clickMenu('navigation-forward')
+    await waitFor(`${caret} === ${target}`, '移除空白历史后前进未恢复原目标')
+    check(`${name}重开后的前进后退仍沿原访问顺序`, true)
+    check(`${name}回放没有改写文件`, readFileSync(path).equals(saved.bytes) && statSync(path).mtimeMs === saved.mtime)
+  }
   console.log(`前进后退真机验收通过，共 ${passed} 项。`)
 } catch (error) {
   console.error(error)

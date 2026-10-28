@@ -117,6 +117,75 @@ await nav4.navigate(-1)
 assert.equal(host.view.state.doc.lineAt(host.view.state.selection.main.head).number,10,'明确跳转保留尚未停稳的起点')
 nav4.dispose()
 
+// 空白标签重开已关闭文件会移除当前位置，回放目标不能再按相邻索引查找。
+for (const mode of [false, true]) {
+  for (const direction of [-1, 1]) {
+    for (const earlier of [false, true]) {
+      sourceMode = mode
+      const load = (filePath, line = 1) => {
+        identity = { filePath, tabId: filePath ?? 'blank' }
+        host.view.state = EditorState.create({ doc: text, selection: { anchor: 0 } })
+        const position = host.view.state.doc.line(line).from
+        host.view.state = host.view.state.update({ selection: { anchor: position } }).state
+        source.value = text
+        source.setSelectionRange(position, position, 'forward')
+      }
+      load(earlier ? '/earlier.md' : '/target.md', earlier ? 5 : 40)
+      let replayNav
+      replayNav = new EditorNavigation({ source, getIdentity: () => identity, isSourceMode: () => sourceMode,
+        isProgrammatic: () => false, open: async target => {
+          if (identity.filePath === null && target.filePath) replayNav.closed(identity.tabId, null)
+          load(target.filePath)
+          replayNav.reloaded()
+          return 'ok'
+        } })
+      replayNav.initialize()
+      const visit = (filePath, line = 1) => {
+        replayNav.beforeSwitch(); load(filePath, line); replayNav.afterSwitch()
+      }
+      if (earlier) visit('/target.md', 40)
+      visit(null)
+      if (direction === 1) {
+        visit('/target.md', 40)
+        await replayNav.navigate(-1)
+      }
+      await replayNav.navigate(direction)
+      const actual = mode ? source.selectionStart : host.view.state.selection.main.head
+      assert.equal(identity.filePath, '/target.md', '重开后文档身份正确')
+      assert.equal(actual, host.view.state.doc.line(40).from,
+        `${mode ? '源码' : '渲染'}${direction < 0 ? '后退' : '前进'}在删除空白当前位置后恢复原目标，不使用移动后的相邻项`)
+      replayNav.dispose()
+    }
+  }
+}
+console.log('通过：两种模式前进与后退重用空白标签后，仍恢复目标文件原位置')
+
+// 重开时磁盘内容变短，固定目标仍要读取按新正文夹限后的行列。
+for (const mode of [false, true]) {
+  sourceMode = mode; identity = { filePath: '/shorter.md', tabId: 'closed' }
+  host.view.state = EditorState.create({ doc: text, selection: { anchor: text.indexOf('39:') } })
+  source.value = text; source.setSelectionRange(text.indexOf('39:'), text.indexOf('39:'), 'forward')
+  let reloadNav
+  reloadNav = new EditorNavigation({ source, getIdentity: () => identity, isSourceMode: () => sourceMode,
+    isProgrammatic: () => false, open: async target => {
+      reloadNav.closed(identity.tabId, null)
+      identity = { filePath: target.filePath, tabId: 'blank' }
+      const shorter = text.split('\n').slice(0, 30).join('\n')
+      host.view.state = EditorState.create({ doc: shorter })
+      source.value = shorter; source.setSelectionRange(0, 0, 'forward')
+      reloadNav.reloaded()
+      return 'ok'
+    } })
+  reloadNav.initialize(); reloadNav.beforeSwitch()
+  identity = { filePath: null, tabId: 'blank' }
+  host.view.state = EditorState.create({ doc: '' }); source.value = ''; source.setSelectionRange(0, 0, 'forward')
+  reloadNav.afterSwitch(); await reloadNav.navigate(-1)
+  assert.equal(mode ? source.selectionStart : host.view.state.selection.main.head, host.view.state.doc.line(30).from,
+    '删除空白记录后重开变短文件，恢复映射后的目标而非打开前的旧偏移')
+  reloadNav.dispose()
+}
+console.log('通过：重开变短文件后，两种模式均采用映射后的目标位置')
+
 // 走搜索面板真实的全部替换入口，验证不连续修改之间的锚点与替换长度无关。
 for (const replacement of ['Y', '更长的替换', '', '$&']) {
   const original='X\n'+'a'.repeat(100)+'\n'+'b'.repeat(100)+'\nX'

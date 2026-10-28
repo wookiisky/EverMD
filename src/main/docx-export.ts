@@ -8,6 +8,7 @@ import { fileURLToPath } from 'url'
 import { unified } from 'unified'
 import remarkParse from 'remark-parse'
 import remarkGfm from 'remark-gfm'
+import { cjkEmphasisSyntax } from './remark-cjk-emphasis'
 import {
   Document,
   ExternalHyperlink,
@@ -182,7 +183,8 @@ function blockNodes(nodes: MarkdownNode[] | undefined, sourcePath: string | null
 }
 
 export async function markdownToDocx(input: DocxExportInput): Promise<Buffer> {
-  const tree = unified().use(remarkParse).use(remarkGfm).parse(input.content) as MarkdownNode
+  const tree = unified().use(remarkParse).use(remarkGfm)
+    .data('micromarkExtensions', [cjkEmphasisSyntax(input.content)]).parse(input.content) as MarkdownNode
   const document = new Document({
     creator: 'ColaMD',
     title: input.sourcePath ? basename(input.sourcePath, extname(input.sourcePath)) : 'Untitled',

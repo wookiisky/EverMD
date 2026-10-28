@@ -57,6 +57,8 @@ export class NavigationHistory {
   private pending: NavigationAnchor | null = null
   /** 连续移动结束后再记录，避免把经过的位置写入历史。 */
   private timer: ReturnType<typeof setTimeout> | null = null
+  /** 正在打开的目标记录；删除其他记录不会改变它的身份。 */
+  private replayEntry: NavigationEntry | null = null
   /** 状态变化时通知外壳更新菜单。 */
   private readonly onChange: () => void
 
@@ -136,13 +138,35 @@ export class NavigationHistory {
     return entry ? { ...entry.position } : null
   }
 
-  /** 外壳确认目标已成功打开并定位后，才推进历史指针。 */
-  commit(direction: NavigationDirection): boolean {
-    if (!this.peek(direction)) return false
+  /** 开始一次回放，固定记录本身，允许打开过程中映射位置或移除当前项。 */
+  beginReplay(direction: NavigationDirection): NavigationAnchor | null {
+    this.replayEntry = this.entries[this.index + direction] ?? null
+    return this.replayTarget
+  }
+
+  /** 读取目标的最新位置；外部重载可能已经按新正文映射它。 */
+  get replayTarget(): NavigationAnchor | null {
+    return this.replayEntry ? { ...this.replayEntry.position } : null
+  }
+
+  /** 按固定目标提交，目标成为当前项后不再重复向前或向后移动。 */
+  commitReplay(): boolean {
+    const index = this.replayEntry ? this.entries.indexOf(this.replayEntry) : -1
+    this.endReplay()
+    if (index < 0) return false
     this.cancelPending()
-    this.index += direction
+    this.index = index
     this.onChange()
     return true
+  }
+
+  /** 成功、取消或失败后释放本次回放目标。 */
+  endReplay(): void { this.replayEntry = null }
+
+  /** 外壳确认目标已成功打开并定位后，才推进历史指针。 */
+  commit(direction: NavigationDirection): boolean {
+    this.beginReplay(direction)
+    return this.commitReplay()
   }
 
   /** 移除确认已不存在的文件，避免失效记录堵住更早位置。 */
@@ -171,7 +195,7 @@ export class NavigationHistory {
   }
 
   /** 取消定时任务，释放窗口关闭后不再需要的候选。 */
-  dispose(): void { this.cancelPending() }
+  dispose(): void { this.cancelPending(); this.endReplay() }
 
   /** 删除记录时尽量保留当前项；当前项被删则退到最近的前项。 */
   private remove(matches: (position: NavigationAnchor) => boolean): void {
@@ -179,11 +203,15 @@ export class NavigationHistory {
     const remaining: NavigationEntry[] = []
     let index = -1
     this.entries.forEach((entry, originalIndex) => {
-      if (matches(entry.position)) return
+      if (matches(entry.position)) {
+        if (this.replayEntry === entry) this.endReplay()
+        return
+      }
       const previous = remaining[remaining.length - 1]
       // A → 已删除文件 → A 收拢后不留下两次相同停留；当前项的精确落点优先。
       if (previous && nearby(previous.baseline, entry.baseline)) {
         if (originalIndex <= this.index) previous.position = entry.position
+        if (this.replayEntry === entry) this.replayEntry = previous
       } else remaining.push(entry)
       if (originalIndex <= this.index) index = remaining.length - 1
     })

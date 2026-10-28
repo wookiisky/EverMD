@@ -280,7 +280,7 @@ export class EditorNavigation {
     this.beforeSwitch()
     this.replaying = true
     try {
-      for (let target = this.history.peek(direction); target; target = this.history.peek(direction)) {
+      for (let target = this.history.beginReplay(direction); target; target = this.history.beginReplay(direction)) {
         const result = await this.options.open(target)
         if (this.disposed || result === 'cancelled') return
         if (result === 'missing') {
@@ -288,14 +288,14 @@ export class EditorNavigation {
           else this.history.removeUntitled(target.tabId)
           continue
         }
-        // 读取过程中可能按新文本映射过锚点，因此从历史再取一次。
-        const currentTarget = this.history.peek(direction)
+        // 打开可能移除当前未命名记录；按原目标读取映射后的位置，不再依赖相邻索引。
+        const currentTarget = this.history.replayTarget
         if (!currentTarget) return
         this.restore(currentTarget)
-        this.history.commit(direction)
+        this.history.commitReplay()
         if (this.observed) this.history.updateCurrent(this.observed)
         return
       }
-    } finally { this.replaying = false; this.synchronize() }
+    } finally { this.history.endReplay(); this.replaying = false; this.synchronize() }
   }
 }

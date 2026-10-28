@@ -12,6 +12,7 @@ import { applyTheme, loadSavedTheme } from './themes/theme-manager'
 import { setUiLanguage, isChinese, type UiLanguage } from './ui-language'
 import { Sidebars } from './sidebars'
 import { EditorNavigation } from './editor-navigation'
+import { prepareDocumentsForClose } from './document-close'
 import type { NavigationAnchor } from './navigation-history'
 import type { SidebarSide } from '../shared/sidebar-config'
 import { applyEditorFont, clearEditorFont, loadSavedEditorFont, resetEditorFontSize, showFontSettingsModal, stepEditorFontSize } from './editor/font-settings'
@@ -132,7 +133,7 @@ let documentRevision = 0
 let saveQueue: Promise<void> = Promise.resolve()
 
 function reportDirty(): void {
-  window.electronAPI.reportDirty(dirty)
+  window.electronAPI.reportDirty(dirty || tabs.some(tab => tab.id !== activeTabId && tab.dirty))
 }
 
 // --- Save status hint (#49) ---
@@ -254,6 +255,11 @@ let switchingTab = false
 let documentOperationQueue: Promise<void> = Promise.resolve()
 // 等待切换期间的控件事件不属于用户在文档内停留的位置。
 let documentOperationActive = false
+// 关窗确认期间暂停自动保存，批准后保持队列与输入锁定到窗口关闭或退出取消。
+let windowClosePreparing = false
+let releaseWindowClose: (() => void) | null = null
+// 退出被取消后重新读磁盘，不能把确认期间的外部更新当成已经显示过。
+const changesDuringClose = new Set<string>()
 // 编辑器与首个标签就绪后创建；启动时的文件事件仍可沿用原加载流程。
 let navigation: EditorNavigation | null = null
 
@@ -529,6 +535,7 @@ function renderTabBar(): void {
   // Let the main process know which files this window holds in tabs, so opening
   // an already open document can focus that tab instead of duplicating it.
   window.electronAPI.setTabFiles(tabs.map((tab) => tab.filePath).filter((path): path is string => !!path))
+  reportDirty()
 }
 
 function showBlankDocument(): void {
@@ -638,7 +645,7 @@ async function refreshDocumentFileUrl(): Promise<void> {
   applyDocumentFileUrl(url)
 }
 
-async function activateTabNow(id: string): Promise<'ok' | 'missing' | 'cancelled'> {
+async function activateTabNow(id: string, savePrevious = true): Promise<'ok' | 'missing' | 'cancelled'> {
   if (id === activeTabId) return 'ok'
   if (switchingTab) return 'cancelled'
   if (isPresenting()) stopSlideshow()
@@ -646,7 +653,7 @@ async function activateTabNow(id: string): Promise<'ok' | 'missing' | 'cancelled
   if (!target) return 'cancelled'
   const previous = activeTab()
   captureActiveTab()
-  if (!await saveTabForLeaving(previous)) return 'cancelled'
+  if (savePrevious && !await saveTabForLeaving(previous)) return 'cancelled'
   switchingTab = true
   try {
     // Point the window at the incoming document first: this re-points the file
@@ -712,7 +719,8 @@ async function activateTabNow(id: string): Promise<'ok' | 'missing' | 'cancelled
       view.dispatch({ effects: target.scrollSnapshot })
     } else editorScroller().scrollTop = target.scrollTop
     renderTabBar()
-    if (changedOnDisk && target.dirty) raiseExternalConflict()
+    if (documentOperationActive) setEditorEditable(false)
+    if (changedOnDisk && target.dirty && !windowClosePreparing) raiseExternalConflict()
     return 'ok'
   } finally {
     switchingTab = false
@@ -989,7 +997,7 @@ function scheduleAutosave(): void {
   if (!currentFilePath) return
   // Paused while an external-modification conflict is unresolved: the user
   // must decide between their version and the disk version first.
-  if (externalConflictPending) return
+  if (externalConflictPending || windowClosePreparing) return
   if (autosaveTimer) clearTimeout(autosaveTimer)
   autosaveTimer = setTimeout(() => {
     autosaveTimer = null
@@ -1817,7 +1825,7 @@ async function toggleSlideshow(): Promise<void> {
       void window.electronAPI.setSlideshowFullscreen(true)
     },
     onExit: () => {
-      setEditorEditable(true)
+      setEditorEditable(!documentOperationActive)
       void window.electronAPI.setSlideshowFullscreen(false)
       if (wasSourceMode) enterSourceMode(content, sourceScrollRatio)
     }
@@ -1907,14 +1915,52 @@ async function init(): Promise<void> {
   // Main asks for an authoritative snapshot before any close or quit.
   api.onRequestDocumentState(async (requestId) => {
     captureActiveTab()
-    // Report every tab that still has unsaved content. The main process writes
-    // the ones with a path and refuses to close on the untitled ones, so a
-    // background tab can never be dropped silently.
+    // 只读快照供诊断和验收；关窗由下面的逐标签保存协调处理。
     window.electronAPI.respondDocumentState(requestId, {
       dirty,
       content: getFileContent(),
       tabs: tabs.filter((tab) => tab.dirty).map((tab) => ({ path: tab.filePath, content: tab.content }))
     })
+  })
+  api.onCancelWindowClose(() => releaseWindowClose?.())
+  api.onPrepareWindowClose((requestId) => {
+    // 握手只证明渲染层在响应；用户的原生保存对话框不受三秒超时限制。
+    api.acknowledgeWindowClose(requestId)
+    void enqueueDocumentOperation(async () => {
+      windowClosePreparing = true
+      if (autosaveTimer) clearTimeout(autosaveTimer)
+      autosaveTimer = null
+      let approved = false
+      try {
+        await saveQueue
+        captureActiveTab()
+        approved = !externalConflictPending && await prepareDocumentsForClose({
+          activeId: () => activeTabId,
+          dirtyIds: () => tabs.filter(tab => tab.dirty).map(tab => tab.id),
+          activate: async id => await activateTabNow(id, false) === 'ok',
+          confirm: () => api.confirmDocumentClose({ path: currentFilePath, content: getFileContent() }),
+          save: () => saveCurrent()
+        })
+        // 批准后先装好释放回调，再通知主进程，避免多窗口退出取消时丢掉释放信号。
+        const released = approved ? new Promise<void>(resolve => { releaseWindowClose = resolve }) : null
+        api.respondWindowClose(requestId, approved)
+        if (released) await released
+      } catch (error) {
+        console.error('关闭前保存失败', error)
+        api.respondWindowClose(requestId, false)
+      } finally {
+        releaseWindowClose = null
+        if (currentFilePath && changesDuringClose.has(currentFilePath)) {
+          const path = currentFilePath
+          const result = await api.navigateToFile(path, true)
+          if (result.status === 'ok' && currentFilePath === path) applyExternalContent(result.content)
+        }
+        changesDuringClose.clear()
+        windowClosePreparing = false
+        if (dirty && !externalConflictPending) scheduleAutosave()
+        reportDirty()
+      }
+    }, false)
   })
   // Report readiness only after every listener is registered — the main process
   // reacts to this signal by flushing queued tab-opens and by trusting the
@@ -2017,8 +2063,8 @@ async function init(): Promise<void> {
     await enqueueDocumentOperation(() => api.openFile())
   })
 
-  api.onMenuSave(() => { void saveCurrent() })
-  api.onMenuSaveAs(() => { void saveCurrent(true) })
+  api.onMenuSave(() => { if (!windowClosePreparing) void saveCurrent() })
+  api.onMenuSaveAs(() => { if (!windowClosePreparing) void saveCurrent(true) })
   api.onMenuExportPDF(() => api.exportPDF())
   api.onMenuExportHTML(() => { void exportCurrentHTML() })
   api.onMenuExportDOCX(async () => {
@@ -2041,7 +2087,14 @@ async function init(): Promise<void> {
   api.onFileOpened((data) => {
     void enqueueDocumentOperation(async () => { applyOpenedFile({ ...data, fileUrl: data.fileUrl ?? null }) })
   })
-  api.onFileChanged((content) => {
+  api.onFileChanged((content, path) => {
+    if (windowClosePreparing) { changesDuringClose.add(path); return }
+    if (path !== currentFilePath) return
+    applyExternalContent(content)
+  })
+
+  // 热更新共用同一条载入路径，取消退出后的补读也遵守未保存冲突规则。
+  function applyExternalContent(content: string): void {
     if (dirty) {
       raiseExternalConflict()
       return
@@ -2064,7 +2117,7 @@ async function init(): Promise<void> {
     updateWordCount()
     resetDirty()
     scheduleOutlineUpdate()
-  })
+  }
 
   api.onSetTheme((theme) => applyTheme(theme))
 
@@ -2089,6 +2142,7 @@ async function init(): Promise<void> {
     renderTabBar()
   })
   api.onExternalConflictResult((result) => {
+    externalConflictPending = false
     if (result.action === 'load' && typeof result.content === 'string') {
       applyContent(result.content)
       navigation?.reloaded()
@@ -2101,7 +2155,6 @@ async function init(): Promise<void> {
       showSaveStatus('dirty')
       if (dirty) scheduleAutosave()
     }
-    externalConflictPending = false
   })
   api.onOpenFontSettings(() => showFontSettingsModal())
   api.onEditorFontChanged((prefs) => applyEditorFont(prefs.family || prefs.size ? prefs : null))

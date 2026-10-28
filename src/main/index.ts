@@ -1,5 +1,6 @@
 import { app, BrowserWindow, ipcMain, dialog, Menu, shell, session, clipboard, screen, nativeTheme } from 'electron'
 import { execFile } from 'child_process'
+import { randomUUID } from 'crypto'
 import { autoUpdater } from 'electron-updater'
 import { join, basename, dirname, extname, isAbsolute, resolve, relative, sep } from 'path'
 import { fileURLToPath, pathToFileURL } from 'url'
@@ -10,6 +11,8 @@ import type { SidebarPreferences } from '../shared/sidebar-config'
 import sidebarLabels from '../shared/sidebar-labels.json'
 import type { NavigationFileResult, NavigationMenuState } from '../shared/navigation-config'
 import navigationLabels from '../shared/navigation-labels.json'
+import type { DocumentCloseChoice, DocumentCloseRequest } from '../shared/document-close-config'
+import documentCloseLabels from '../shared/document-close-labels.json'
 
 const startupStartedAt = performance.now()
 const startupTraceEnabled = process.env.COLAMD_STARTUP_TRACE === '1'
@@ -251,6 +254,8 @@ interface WindowState {
   filePath: string | null
   browsePath: string | null
   watcher: FSWatcher | null
+  // 每次文档监听绑定递增；同一路径重新激活也必须拒绝上次读取。
+  watchVersion: number
   isInternalSave: boolean
   internalSaveCount: number
   // mtime of the file as of our last read or write. An autosave refuses to
@@ -281,30 +286,27 @@ interface WindowState {
   initialDocDelivered: boolean
 }
 
-interface DocumentSnapshot {
-  dirty: boolean
-  content: string
-  // Every tab of the window that still has unsaved content. `path === null`
-  // means an untitled tab, which cannot be written without asking the user.
-  tabs?: { path: string | null; content: string }[]
-}
-
-interface PendingDocumentStateRequest {
+/** 关闭请求先等待渲染层握手，握手后等待用户完成保存。 */
+interface PendingWindowCloseRequest {
+  /** 只有发起请求的窗口能确认完成。 */
   webContentsId: number
-  resolve: (snapshot: DocumentSnapshot | null) => void
+  /** null 表示渲染层失去响应。 */
+  resolve: (approved: boolean | null) => void
+  /** 只约束握手，不限制用户在保存框中停留的时间。 */
   timer: ReturnType<typeof setTimeout>
 }
 
 const windowStates = new Map<number, WindowState>()
 let pendingFilePaths: string[] = []
 let isQuitting = false
-let nextDocumentStateRequestId = 0
-const pendingDocumentStateRequests = new Map<string, PendingDocumentStateRequest>()
+let quitInProgress = false
+let nextWindowCloseRequestId = 0
+const pendingWindowCloseRequests = new Map<string, PendingWindowCloseRequest>()
 
 function getState(win: BrowserWindow): WindowState {
   let state = windowStates.get(win.id)
   if (!state) {
-    state = { filePath: null, browsePath: null, watcher: null, isInternalSave: false, internalSaveCount: 0, lastKnownMtime: 0, lastInternalSaveContent: null, debounceTimer: null, siblingsTimer: null, dirty: false, closePromise: null, rendererReady: false, writeQueue: Promise.resolve(), closeAuthorized: false, tabFiles: [], pendingTabFiles: [], initialDocDelivered: false }
+    state = { filePath: null, browsePath: null, watcher: null, watchVersion: 0, isInternalSave: false, internalSaveCount: 0, lastKnownMtime: 0, lastInternalSaveContent: null, debounceTimer: null, siblingsTimer: null, dirty: false, closePromise: null, rendererReady: false, writeQueue: Promise.resolve(), closeAuthorized: false, tabFiles: [], pendingTabFiles: [], initialDocDelivered: false }
     windowStates.set(win.id, state)
   }
   return state
@@ -338,15 +340,16 @@ function fileChangedExternally(filePath: string, state: WindowState): boolean {
 // Hand the renderer the version now on disk so the existing external-change
 // flow can ask the user which side to keep.
 function notifyExternalChange(win: BrowserWindow, filePath: string): void {
+  const state = getState(win)
+  const watchVersion = state.watchVersion
   void readFile(filePath, 'utf-8')
     .then((data) => {
       if (win.isDestroyed()) return
-      const state = getState(win)
-      if (state.filePath !== filePath) return
+      if (state.filePath !== filePath || state.watchVersion !== watchVersion) return
       // 与监听器读到外部版本时一致：本次版本已交给渲染层加载或确认冲突。
-      // 结束“确认缺失”的基线，避免选择加载/保留后每次自动保存都再次冲突。
-      if (state.lastKnownMtime === null) state.lastKnownMtime = fileMtimeMs(filePath)
-      win.webContents.send('file-changed', data)
+      // 无论此前是已知时间还是缺失状态，选择加载/保留后均从本次外部版本继续。
+      state.lastKnownMtime = fileMtimeMs(filePath)
+      win.webContents.send('file-changed', data, filePath)
     })
     .catch(() => { /* the watcher picks it up on the next event */ })
 }
@@ -526,6 +529,11 @@ function suggestSavePath(win: BrowserWindow, fileName?: string): string | undefi
 }
 
 function stopWatching(state: WindowState): void {
+  state.watchVersion += 1
+  if (state.debounceTimer) clearTimeout(state.debounceTimer)
+  if (state.siblingsTimer) clearTimeout(state.siblingsTimer)
+  state.debounceTimer = null
+  state.siblingsTimer = null
   if (state.watcher) {
     state.watcher.close()
     state.watcher = null
@@ -533,15 +541,16 @@ function stopWatching(state: WindowState): void {
 }
 
 function watchFile(win: BrowserWindow, state: WindowState): void {
+  stopWatching(state)
   if (!state.filePath) return
-  if (state.watcher) {
-    state.watcher.close()
-    state.watcher = null
-  }
 
   const filePath = state.filePath
+  const watchVersion = state.watchVersion
   const dir = dirname(filePath)
   const fileName = basename(filePath)
+  // 路径与绑定版本都相同才属于当前文档，防止 A → B → A 的迟到读取。
+  const isCurrent = (): boolean => state.watchVersion === watchVersion
+    && state.filePath === filePath && !win.isDestroyed()
   // macOS FSEvents replays recent history when a watcher starts; drop events
   // fired within this window so opening a file doesn't trigger a spurious reload.
   let suppressUntil = 0
@@ -549,21 +558,25 @@ function watchFile(win: BrowserWindow, state: WindowState): void {
   const scheduleReload = (): void => {
     if (state.debounceTimer) clearTimeout(state.debounceTimer)
     state.debounceTimer = setTimeout(() => {
+      if (!isCurrent()) return
+      state.debounceTimer = null
       readFile(filePath, 'utf-8')
         .then((data) => {
+          if (!isCurrent()) return
           // Our own writes echo back through FSEvents long after the internal
           // save window closes; reloading them would revert the editor and
           // wipe anything typed since the save. Skip self-echoes.
           if (state.lastInternalSaveContent !== null && data === state.lastInternalSaveContent) return
           state.lastInternalSaveContent = null
           state.lastKnownMtime = fileMtimeMs(filePath)
-          if (!win.isDestroyed()) win.webContents.send('file-changed', data)
+          if (!win.isDestroyed()) win.webContents.send('file-changed', data, filePath)
         })
         .catch(() => { /* file mid-replace; a follow-up event will re-trigger */ })
     }, 100)
   }
 
   const onExternalChange = (): void => {
+    if (!isCurrent()) return
     if (state.isInternalSave) return
     if (Date.now() < suppressUntil) return
 
@@ -572,18 +585,19 @@ function watchFile(win: BrowserWindow, state: WindowState): void {
 
   // Agent created/renamed/deleted a sibling file — refresh the file panel list
   const scheduleSiblingsRefresh = (): void => {
+    if (!isCurrent()) return
     if (state.siblingsTimer) clearTimeout(state.siblingsTimer)
     state.siblingsTimer = setTimeout(() => {
+      if (!isCurrent()) return
       state.siblingsTimer = null
-      if (state.filePath !== filePath) return // file switched meanwhile; new watcher handles it
       listSiblingFiles(filePath, state.browsePath ?? dirname(filePath)).then((files) => {
-        if (!win.isDestroyed()) win.webContents.send('siblings-changed', files)
+        if (isCurrent()) win.webContents.send('siblings-changed', files)
       })
     }, 300)
   }
 
   const establish = (): void => {
-    if (state.filePath !== filePath) return
+    if (!isCurrent()) return
     suppressUntil = Date.now() + 300
     if (state.watcher) {
       state.watcher.close()
@@ -595,6 +609,7 @@ function watchFile(win: BrowserWindow, state: WindowState): void {
       // inode and silently kills a watcher bound to the old file. A
       // directory watcher survives those and keeps reporting our filename.
       const watcher = watch(dir, (eventType, filename) => {
+        if (!isCurrent()) return
         if (state.isInternalSave) return
         // filename may be null on some platforms — treat as our file
         if (filename !== null && filename !== fileName) {
@@ -1651,14 +1666,14 @@ ipcMain.handle('report-external-conflict', async (event, localContent: unknown) 
 // The copy that makes discarding safe. Named after the document so the folder
 // stays readable years later, with a local timestamp to the second.
 async function keepRecoveredCopy(filePath: string, content: unknown): Promise<string | null> {
-  if (typeof content !== 'string' || content.trim() === '') return null
+  if (typeof content !== 'string') return null
   const now = new Date()
   const pad = (value: number) => String(value).padStart(2, '0')
   const stamp = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`
-  const target = join(recoveryDir, `${basename(filePath, extname(filePath))}-${stamp}.md`)
+  const target = join(recoveryDir, `${basename(filePath, extname(filePath))}-${stamp}-${randomUUID()}.md`)
   try {
     await mkdir(recoveryDir, { recursive: true })
-    await writeFile(target, content, 'utf-8')
+    await writeFile(target, content, { encoding: 'utf-8', flag: 'wx' })
     return target
   } catch (error) {
     console.error('Could not write the recovery copy', error)
@@ -2523,37 +2538,59 @@ app.whenReady().then(() => {
 
 // --- Unsaved-changes guard (auto-save is the primary defense; this is the backstop) ---
 
-// Ask one specific renderer for an atomic dirty/content snapshot. A timeout is
-// a failed request, never a signal that the document is clean.
-function requestDocumentState(win: BrowserWindow): Promise<DocumentSnapshot | null> {
-  const requestId = `${win.webContents.id}:${++nextDocumentStateRequestId}`
-  return new Promise((resolve) => {
-    const timer = setTimeout(() => {
-      const pending = pendingDocumentStateRequests.get(requestId)
-      if (!pending) return
-      pendingDocumentStateRequests.delete(requestId)
-      pending.resolve(null)
-    }, 3000)
-    pendingDocumentStateRequests.set(requestId, { webContentsId: win.webContents.id, resolve, timer })
-    win.webContents.send('request-document-state', requestId)
+// 只有渲染层能逐标签复用保存；主进程不把后台正文直接写进文件。
+function requestWindowClose(win: BrowserWindow): Promise<boolean | null> {
+  const requestId = `${win.webContents.id}:${++nextWindowCloseRequestId}`
+  return new Promise(resolve => {
+    const finish = (approved: boolean | null): void => {
+      if (!pendingWindowCloseRequests.delete(requestId)) return
+      clearTimeout(timer)
+      win.webContents.removeListener('destroyed', unavailable)
+      win.webContents.removeListener('render-process-gone', unavailable)
+      resolve(approved)
+    }
+    const unavailable = (): void => finish(null)
+    const timer = setTimeout(unavailable, 3000)
+    pendingWindowCloseRequests.set(requestId, { webContentsId: win.webContents.id, resolve: finish, timer })
+    win.webContents.once('destroyed', unavailable)
+    win.webContents.once('render-process-gone', unavailable)
+    win.webContents.send('prepare-window-close', requestId)
   })
 }
 
-ipcMain.on('document-state-response', (event, requestId: unknown, snapshot: unknown) => {
-  if (typeof requestId !== 'string' || !snapshot || typeof snapshot !== 'object') return
-  const { dirty, content, tabs } = snapshot as DocumentSnapshot
-  if (typeof dirty !== 'boolean' || typeof content !== 'string') return
-  const pending = pendingDocumentStateRequests.get(requestId)
-  if (!pending || pending.webContentsId !== event.sender.id) return
-  pendingDocumentStateRequests.delete(requestId)
-  clearTimeout(pending.timer)
-  pending.resolve({
-    dirty,
-    content,
-    tabs: Array.isArray(tabs)
-      ? tabs.filter((tab) => tab && typeof tab.content === 'string' && (tab.path === null || typeof tab.path === 'string'))
-      : undefined
+ipcMain.on('window-close-started', (event, requestId: string) => {
+  const pending = pendingWindowCloseRequests.get(requestId)
+  if (pending?.webContentsId === event.sender.id) clearTimeout(pending.timer)
+})
+
+ipcMain.on('window-close-response', (event, requestId: string, approved: unknown) => {
+  const pending = pendingWindowCloseRequests.get(requestId)
+  if (pending?.webContentsId !== event.sender.id || typeof approved !== 'boolean') return
+  pending.resolve(approved)
+})
+
+// 每次确认都属于当前活动标签；丢弃前写入恢复文件，失败则保留窗口。
+ipcMain.handle('confirm-document-close', async (event, request: DocumentCloseRequest): Promise<DocumentCloseChoice> => {
+  const win = getWinFromEvent(event)
+  if (!win || !request || typeof request.content !== 'string' || request.path !== getState(win).filePath) return 'cancel'
+  const text = documentCloseLabels[getPreferredCheatsheetLanguage()]
+  const name = request.path ? basename(request.path) : text.untitled
+  const { response } = await dialog.showMessageBox(win, {
+    type: 'warning', buttons: [text.save, text.discard, text.cancel], defaultId: 0, cancelId: 2,
+    message: text.unsaved,
+    detail: text.detail.replace('{name}', () => name).replace('{directory}', () => recoveryDir)
   })
+  if (win.isDestroyed() || getState(win).filePath !== request.path) return 'cancel'
+  if (response === 0) return 'save'
+  if (response !== 1) return 'cancel'
+  const recovered = await keepRecoveredCopy(request.path ?? text.untitled, request.content)
+  if (win.isDestroyed()) return 'cancel'
+  await dialog.showMessageBox(win, {
+    type: recovered ? 'info' : 'error', buttons: [text.ok],
+    message: recovered ? text.recovered : text.recoveryFailed,
+    detail: recovered ? text.recoveredDetail.replace('{path}', () => recovered) : text.recoveryFailedDetail
+  })
+  return recovered ? 'discard' : 'cancel'
 })
 
 ipcMain.on('renderer-ready', (event) => {
@@ -2608,126 +2645,49 @@ function confirmWindowClose(win: BrowserWindow, state: WindowState): Promise<boo
 async function handleWindowClose(win: BrowserWindow, state: WindowState): Promise<boolean> {
   if (!state.rendererReady && !state.dirty) return true
 
-  const snapshot = await requestDocumentState(win)
-  if (!snapshot) {
-    // Renderer is unresponsive: it cannot report state or save anything, so
-    // blocking forever would trap the user. Offer an explicit escape instead.
-    if (!state.dirty) return true
-    const { response } = await dialog.showMessageBox(win, {
-      type: 'warning',
-      buttons: [uiText('仍要关闭', 'Close anyway'), uiText('取消', 'Cancel')],
-      defaultId: 1,
-      cancelId: 1,
-      message: uiText('无法与编辑窗口通信', 'Cannot reach the editor window'),
-      detail: uiText(
-        '窗口可能已停止响应，无法确认是否有未保存的修改。强行关闭可能丢失内容。',
-        'The window is not responding, so unsaved changes cannot be checked. Closing it may lose content.'
-      )
-    })
-    return response === 0
-  }
-  state.dirty = snapshot.dirty
-  if (!snapshot.dirty) return true
-
-  const detail = state.filePath
-    ? uiText(`“${basename(state.filePath)}” 有未保存的修改。`, `“${basename(state.filePath)}” has unsaved changes.`)
-    : uiText('当前未命名文档有未保存的修改。', 'The current untitled document has unsaved changes.')
+  const approved = await requestWindowClose(win)
+  if (approved !== null) return approved
+  if (win.isDestroyed()) return true
+  // 无法取得所有标签的确认时必须明确询问，不能把活动标签干净当成全部干净。
   const { response } = await dialog.showMessageBox(win, {
     type: 'warning',
-    buttons: [uiText('保存', 'Save'), uiText('不保存', "Don't Save"), uiText('取消', 'Cancel')],
-    defaultId: 0,
-    cancelId: 2,
-    message: uiText('未保存的修改', 'Unsaved changes'),
-    detail
+    buttons: [uiText('仍要关闭', 'Close anyway'), uiText('取消', 'Cancel')],
+    defaultId: 1,
+    cancelId: 1,
+    message: uiText('无法与编辑窗口通信', 'Cannot reach the editor window'),
+    detail: uiText(
+      '窗口可能已停止响应，无法确认是否有未保存的修改。强行关闭可能丢失内容。',
+      'The window is not responding, so unsaved changes cannot be checked. Closing it may lose content.'
+    )
   })
-  if (response === 2) return false
-  if (response === 1) {
-    state.dirty = false
-    return true
-  }
-
-  const sourcePath = state.filePath
-  let filePath = sourcePath
-  if (!filePath) {
-    const saveAs = await dialog.showSaveDialog(win, {
-      title: uiText('保存 Markdown 文档', 'Save Markdown document'),
-      buttonLabel: uiText('保存', 'Save'),
-      nameFieldLabel: uiText('文件名：', 'File name:'),
-      defaultPath: suggestSavePath(win, suggestFileName(win, snapshot.content)),
-      filters: [
-        { name: 'Markdown', extensions: ['md'] },
-        { name: 'All Files', extensions: ['*'] }
-      ]
-    })
-    if (saveAs.canceled || !saveAs.filePath) return false
-    filePath = saveAs.filePath
-  }
-
-  // Background tabs are not the window's active document, so they bypass the
-  // active-file guards and are written straight to their own paths. An untitled
-  // background tab cannot be written without a dialog, so it is reported
-  // instead of being dropped silently.
-  const backgroundTabs = (snapshot.tabs ?? []).filter((tab) => tab.path && tab.path !== sourcePath)
-  const untitledTabs = (snapshot.tabs ?? []).filter((tab) => !tab.path)
-  for (const tab of backgroundTabs) {
-    try {
-      await writeFile(tab.path as string, tab.content, 'utf-8')
-    } catch {
-      await dialog.showMessageBox(win, {
-        type: 'error',
-        buttons: [uiText('好', 'OK')],
-        message: uiText('无法保存标签页', 'Could not save the tab'),
-        detail: uiText(
-          `“${basename(tab.path as string)}” 写入失败，为保护内容已取消关闭。`,
-          `Writing “${basename(tab.path as string)}” failed, so closing was cancelled to protect the content.`
-        )
-      })
-      return false
-    }
-  }
-  if (untitledTabs.length > 0) {
-    const untitled = await dialog.showMessageBox(win, {
-      type: 'warning',
-      buttons: [uiText('取消', 'Cancel'), uiText('丢弃未命名标签页', 'Discard untitled tabs')],
-      defaultId: 0,
-      cancelId: 0,
-      message: uiText('还有未命名的标签页没有保存', 'Some untitled tabs are still unsaved'),
-      detail: uiText(
-        '关闭窗口会丢掉它们里的内容。请先切到那些标签页保存。',
-        'Closing the window would lose their content. Switch to those tabs and save them first.'
-      )
-    })
-    if (untitled.response === 0) return false
-  }
-
-  const saved = await saveToPath(win, filePath, snapshot.content, sourcePath, true)
-  if (!saved) {
-    await dialog.showMessageBox(win, {
-      type: 'error',
-      buttons: [uiText('好', 'OK')],
-      message: uiText('无法保存文档', 'Could not save the document'),
-      detail: uiText(
-        '为保护未保存的内容，已取消关闭。请检查文件权限和可用磁盘空间。',
-        'Closing was cancelled to protect the unsaved content. Check file permissions and free disk space.'
-      )
-    })
-    return false
-  }
-  state.dirty = false
-  return true
+  if (response !== 0) win.webContents.send('cancel-window-close')
+  return response === 0
 }
 
-app.on('before-quit', (e) => {
+app.on('before-quit', e => {
   if (isQuitting) return
   e.preventDefault()
+  if (quitInProgress) return
+  quitInProgress = true
   void (async () => {
-    for (const win of BrowserWindow.getAllWindows()) {
-      if (win.isDestroyed()) continue
-      const ok = await confirmWindowClose(win, getState(win))
-      if (!ok) return // user cancelled or saving failed; abort the quit entirely
+    const confirmed = new Set<number>()
+    try {
+      // 原生确认框等待期间仍可能新建窗口，退出前也要逐一确认它们。
+      for (;;) {
+        const win = BrowserWindow.getAllWindows().find(window => !window.isDestroyed() && !confirmed.has(window.id))
+        if (!win) break
+        if (!await confirmWindowClose(win, getState(win))) return
+        confirmed.add(win.id)
+      }
+      isQuitting = true
+      app.quit()
+    } finally {
+      quitInProgress = false
+      // 后面的窗口取消退出时，已经批准的窗口也要解除输入与文档队列的锁。
+      if (!isQuitting) for (const win of BrowserWindow.getAllWindows()) {
+        if (!win.isDestroyed()) win.webContents.send('cancel-window-close')
+      }
     }
-    isQuitting = true
-    app.quit()
   })()
 })
 

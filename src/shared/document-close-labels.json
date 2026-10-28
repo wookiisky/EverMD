@@ -1,0 +1,28 @@
+{
+  "zh": {
+    "save": "保存",
+    "discard": "不保存",
+    "cancel": "取消",
+    "ok": "好",
+    "unsaved": "未保存的修改",
+    "untitled": "未命名文档",
+    "detail": "“{name}” 有未保存的修改。不保存时，内容会保留在 {directory}。",
+    "recovered": "未保存的内容已保留",
+    "recoveredDetail": "恢复文件：{path}",
+    "recoveryFailed": "无法保留恢复文件，已取消关闭",
+    "recoveryFailedDetail": "内容仍在编辑器中。请检查目录权限和可用磁盘空间。"
+  },
+  "en": {
+    "save": "Save",
+    "discard": "Don't Save",
+    "cancel": "Cancel",
+    "ok": "OK",
+    "unsaved": "Unsaved changes",
+    "untitled": "Untitled document",
+    "detail": "“{name}” has unsaved changes. If you choose Don't Save, the content will be kept in {directory}.",
+    "recovered": "Unsaved content was kept",
+    "recoveredDetail": "Recovery file: {path}",
+    "recoveryFailed": "Could not keep a recovery file; closing was cancelled",
+    "recoveryFailedDetail": "Your content is still in the editor. Check directory permissions and available disk space."
+  }
+}

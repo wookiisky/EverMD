@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron'
 import type { SidebarContent, SidebarPreferences, SidebarSide } from '../shared/sidebar-config'
 import type { NavigationFileResult, NavigationMenuState } from '../shared/navigation-config'
+import type { DocumentCloseChoice, DocumentCloseRequest } from '../shared/document-close-config'
 
 export interface SiblingFile {
   name: string
@@ -64,7 +65,7 @@ export interface ElectronAPI {
   onFullscreenChange: (callback: (isFullscreen: boolean) => void) => void
   getPathForFile: (file: File) => string
   openExternal: (url: string) => void
-  onFileChanged: (callback: (content: string) => void) => void
+  onFileChanged: (callback: (content: string, path: string) => void) => void
   onNewFile: (callback: () => void) => void
   onFileOpened: (callback: (data: FileOpenedData) => void) => void
   onMenuOpen: (callback: () => void) => void
@@ -114,6 +115,12 @@ export interface ElectronAPI {
   reportDirty: (isDirty: boolean) => void
   reportRendererReady: () => void
   closeWindow: () => Promise<void>
+  /** 关闭前由渲染层逐标签保存，确认期间保持文档操作串行。 */
+  onPrepareWindowClose: (callback: (requestId: string) => void) => void
+  acknowledgeWindowClose: (requestId: string) => void
+  respondWindowClose: (requestId: string, approved: boolean) => void
+  onCancelWindowClose: (callback: () => void) => void
+  confirmDocumentClose: (request: DocumentCloseRequest) => Promise<DocumentCloseChoice>
   logRendererError: (message: string) => Promise<void>
   onRequestDocumentState: (callback: (requestId: string) => void) => void
   respondDocumentState: (requestId: string, snapshot: { dirty: boolean; content: string; tabs?: { path: string | null; content: string }[] }) => void
@@ -170,8 +177,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
   getPathForFile: (file: File) => webUtils.getPathForFile(file),
   openExternal: (url: string) => ipcRenderer.send('open-external', url),
-  onFileChanged: (callback: (content: string) => void) => {
-    ipcRenderer.on('file-changed', (_event, content) => callback(content))
+  onFileChanged: (callback: (content: string, path: string) => void) => {
+    ipcRenderer.on('file-changed', (_event, content: string, path: string) => callback(content, path))
   },
   onNewFile: (callback: () => void) => {
     ipcRenderer.on('new-file', () => callback())
@@ -293,6 +300,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
   reportDirty: (isDirty: boolean) => ipcRenderer.send('set-dirty', isDirty),
   reportRendererReady: () => ipcRenderer.send('renderer-ready'),
   closeWindow: () => ipcRenderer.invoke('request-close-window'),
+  onPrepareWindowClose: (callback: (requestId: string) => void) => {
+    ipcRenderer.on('prepare-window-close', (_event, requestId: string) => callback(requestId))
+  },
+  acknowledgeWindowClose: (requestId: string) => ipcRenderer.send('window-close-started', requestId),
+  respondWindowClose: (requestId: string, approved: boolean) => ipcRenderer.send('window-close-response', requestId, approved),
+  onCancelWindowClose: (callback: () => void) => {
+    ipcRenderer.on('cancel-window-close', callback)
+  },
+  confirmDocumentClose: (request: DocumentCloseRequest) => ipcRenderer.invoke('confirm-document-close', request),
   logRendererError: (message: string) => ipcRenderer.invoke('log-renderer-error', message),
   onRequestDocumentState: (callback: (requestId: string) => void) => {
     ipcRenderer.on('request-document-state', (_event, requestId) => callback(requestId))
