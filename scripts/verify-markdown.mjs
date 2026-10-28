@@ -61,6 +61,13 @@ const CASES = [
   ['highlight standalone', '==高亮==\n'],
   ['underscore emphasis', '_italic_ and __bold__\n'],
   ['code content with underscore', '`a_b_c`\n'],
+  ['cjk punctuation bold', '**结果与边界：**不恢复、不自动续局，不能刚结束人机球局就拨人收好的球。\n'],
+  ['cjk punctuation emphasis runs', '前文*（斜体）*后文、**「加粗」**后文、***（组合）***后文。\n'],
+  ['cjk punctuation nested emphasis', '**外层 *内层*：**后文\n'],
+  ['cjk punctuation escaped markers', '\\*\\*结果与边界：\\*\\*不恢复\n'],
+  ['cjk punctuation protected code', '`**结果与边界：**不恢复`\n\n```md\n**结果与边界：**不恢复\n```\n'],
+  ['cjk punctuation containers', '- **列表边界：**后文\n\n> **引用边界：**后文\n\n[**链接边界：**后文](https://example.com)\n\n| 内容 |\n| --- |\n| **表格边界：**后文 |\n'],
+  ['cjk punctuation crlf', '**结果与边界：**不恢复\r\n\r\n前文**（结果）**后文\r\n'],
 
   // 保真重点：曾被过度转义的字面量。这些正是这次重写要消灭的
   ['literal asterisk math-ish', '3 * 4\n'],

@@ -44,6 +44,16 @@ The two items below are the ones actually blocking us. Everything else on this p
 
 ## Implemented On Main
 
+### 中文标点旁的星号强调
+
+**来源：** 用户反馈（2026-10-28）：`**结果与边界：**不恢复` 未显示加粗。
+
+**范围：** 星号串紧邻汉字、假名、韩文、注音及其共享标点，或全角字符时，允许在标点内外识别强调；单星斜体、双星加粗、三星组合共用边界规则。依据 Unicode 文字属性和全角字符区间判断，不枚举标点。纯英文与下划线沿用 CommonMark 规则，代码、转义、标记内侧空白和段落边界仍按原规则处理。这是本产品的中文显示兼容约定，不声明完整实现所有 CJK-friendly Unicode 宽度及变体选择符规则。
+
+**实现：** 将既有 `@lezer/markdown` 升至 1.8.0，通过公开的 `InlineContext.emphasisAsterisk` 仅扩展边界判断；强调配对、嵌套和星号长度规则继续使用上游实现。源码字符与偏移不变，复用编辑器原有的渲染、HTML 复制和导出路径。Word 导出使用独立的 remark 解析器，本次未调整。
+
+**验证：** `verify:emphasis` 的 26 个目标用例、26 个标准语法兼容用例及增量编辑检查通过；完整 `verify:features` 的 574 项真实 Electron 离屏验收通过，包含深浅主题的字体、标记隐藏、列表、引用、链接、表格、HTML 导出和复制，也可用 `--emphasis-only` 单独运行本次回归。`verify:markdown` 的 100 份文件打开再保存均为零字节差异，`verify:scroll-render` 的 4 个滚动位置通过。四份类型检查、构建与 `git diff --check` 通过。已在工作区实现，尚未发布。
+
 ### 跨文件前进与后退
 
 **来源：** 用户需求（2026-10-28），明确只记录光标跳转和跨文件切换，不记录纯滚动。

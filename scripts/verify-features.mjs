@@ -9,6 +9,7 @@
 // 只验 Mermaid 点击往返：npm run verify:features -- --mermaid-only
 // 只验代码块与正文的光标颜色：npm run verify:features -- --cursor-only
 // 只验列表中表格导出：npm run verify:features -- --list-export-only
+// 只验中文标点强调：npm run verify:features -- --emphasis-only
 // 窗口放在屏幕外，不占用屏幕；一次启动跑完所有断言。
 //
 // 注意：页面侧表达式写在模板字符串里，反斜杠会被模板字符串吃掉一次，
@@ -1130,6 +1131,97 @@ async function checkListTableExport(renderer) {
   }
 }
 
+/** 中文标点两侧的强调在真实 DOM、复制、导出与增量编辑中保持一致。 */
+async function checkPunctuationEmphasis(renderer) {
+  const original = '**结果与边界：**不恢复、不自动续局，不能刚结束人机球局就拨人收好的球。'
+  const cases = [
+    { name: '原始反馈', source: original, label: '结果与边界：', bold: true },
+    { name: '正文中括号', source: '前文**（结果）**后文', label: '（结果）', bold: true },
+    { name: '单星斜体', source: '前文*（斜体）*后文', label: '（斜体）', italic: true },
+    { name: '三星组合', source: '前文***（组合）***后文', label: '（组合）', bold: true, italic: true },
+    { name: '嵌套斜体', source: '**外层 *内层*：**后文', label: '外层 ', bold: true, italicLabel: '内层', italic: true },
+    { name: '列表', source: '- **列表边界：**后文', label: '列表边界：', bold: true, container: 'li' },
+    { name: '引用', source: '> **引用边界：**后文', label: '引用边界：', bold: true, container: 'blockquote' },
+    { name: '链接文字', source: '[**链接边界：**后文](https://example.com)', label: '链接边界：', bold: true, container: 'a' },
+    // 光标留在表格外，才能验证真实单元格；表格内光标按既有交互显示源码。
+    { name: '表格单元格', source: '| 内容 |\n| --- |\n| **表格边界：**后文 |\n\n表格之后', label: '表格边界：', bold: true, container: 'td' },
+    { name: '纯英文保留标准', source: '**foo:**bar', literal: true },
+    { name: '下划线保留标准', source: '__结果与边界：__不恢复', literal: true },
+    { name: '行内代码保护', source: '`**代码边界：**后文`', literal: true, literalText: '**代码边界：**后文' },
+    { name: '围栏代码保护', source: '```md\n**围栏边界：**后文\n```', literal: true, literalText: '**围栏边界：**后文' },
+    { name: '未闭合保留原文', source: '**未闭合边界：后文', literal: true },
+  ]
+  const savedClass = await evaluate(renderer, 'document.body.className')
+  await evaluate(renderer, `window.__emphasisView = document.querySelector('#editor .cm-content').cmTile.root.view; window.__emphasisState = __emphasisView.state; true`)
+  try {
+    for (const theme of ['light', 'dark']) {
+      await evaluate(renderer, `document.body.className = ${JSON.stringify(`theme-${theme}`)}`)
+      for (const sample of cases) {
+        await evaluate(renderer, `(() => {
+          const v = __emphasisView
+          v.setState(v.state.constructor.create({doc:${JSON.stringify(sample.source)},extensions:v.state.config.base}))
+          v.dispatch({selection:{anchor:v.state.doc.length}})
+          return true
+        })()`)
+        await sleep(120)
+        const result = JSON.parse(await evaluate(renderer, `(() => {
+          const v = __emphasisView, content = v.contentDOM
+          const strong = [...content.querySelectorAll('.cm-md-strong, strong')].find(el=>el.textContent.includes(${JSON.stringify(sample.label ?? '\u0000')}))
+          const em = [...content.querySelectorAll('.cm-md-em, em')].find(el=>el.textContent.includes(${JSON.stringify(sample.italicLabel ?? sample.label ?? '\u0000')}))
+          const html = window.__colamdExportDocumentHTML()
+          const root = document.createElement('div'); root.innerHTML = html
+          const exported = [...root.querySelectorAll('strong')].find(el=>el.textContent.includes(${JSON.stringify(sample.label ?? '\u0000')}))
+          const exportedEm = [...root.querySelectorAll('em')].find(el=>el.textContent.includes(${JSON.stringify(sample.italicLabel ?? sample.label ?? '\u0000')}))
+          v.dispatch({selection:{anchor:0,head:v.state.doc.length}})
+          const clipboard = new DataTransfer()
+          v.contentDOM.dispatchEvent(new ClipboardEvent('copy',{clipboardData:clipboard,bubbles:true,cancelable:true}))
+          const copied = document.createElement('div'); copied.innerHTML = clipboard.getData('text/html')
+          return JSON.stringify({html,text:content.textContent,
+            bold:!!strong&&Number(getComputedStyle(strong).fontWeight)>=600,
+            italic:!!em&&getComputedStyle(em).fontStyle==='italic',
+            exportedBold:!!exported,exportedItalic:!!exportedEm,
+            container:!!exported?.closest(${JSON.stringify(sample.container ?? 'p')}),
+            renderedTable:!!strong?.closest('td'),
+            raw:content.textContent.includes('**')||content.textContent.includes('***'),
+            anyBold:!!content.querySelector('.cm-md-strong, strong'),
+            anyExportedBold:!!root.querySelector('strong'),exportedText:root.textContent,
+            copiedBold:[...copied.querySelectorAll('strong')].some(el=>el.textContent.includes(${JSON.stringify(sample.label ?? '\u0000')})),
+            copiedItalic:[...copied.querySelectorAll('em')].some(el=>el.textContent.includes(${JSON.stringify(sample.italicLabel ?? sample.label ?? '\u0000')})),
+            copyText:clipboard.getData('text/plain'),source:v.state.doc.toString()})
+        })()`))
+        const name = `${theme} ${sample.name}`
+        if (sample.literal) {
+          const literal = sample.literalText ?? sample.source
+          check(`${name}：保留字面标记且不误加粗`, !result.anyBold && !result.anyExportedBold && result.text.includes(literal) && result.exportedText.includes(literal), JSON.stringify(result))
+        } else {
+          check(`${name}：字体和标记正确`, (!sample.bold || result.bold) && (!sample.italic || result.italic) && !result.raw && (sample.container !== 'td' || result.renderedTable), JSON.stringify(result))
+          check(`${name}：HTML 导出保留格式与归属`, (!sample.bold || result.exportedBold) && (!sample.italic || result.exportedItalic) && (!sample.container || result.container), result.html)
+          check(`${name}：复制保留富文本`, (!sample.bold || result.copiedBold) && (!sample.italic || result.copiedItalic), result.html)
+        }
+        check(`${name}：复制和渲染不改源码`, result.source === sample.source && result.copyText === sample.source, JSON.stringify(result))
+      }
+    }
+    const close = original.indexOf('**', 2)
+    await evaluate(renderer, `(() => {
+      const v = __emphasisView
+      v.setState(v.state.constructor.create({doc:${JSON.stringify(original)},extensions:v.state.config.base}))
+      v.dispatch({changes:{from:${close},to:${close + 2}},selection:{anchor:${close}}})
+      return true
+    })()`)
+    await sleep(120)
+    const removed = await evaluate(renderer, `!__emphasisView.contentDOM.querySelector('.cm-md-strong') && __emphasisView.contentDOM.textContent.includes('**结果与边界：不恢复')`)
+    check('删除结束标记立即恢复字面文本', removed, String(removed))
+    await evaluate(renderer, `__emphasisView.dispatch({changes:{from:${close},insert:'**'},selection:{anchor:${close + 2}}}); true`)
+    await sleep(120)
+    const restored = JSON.parse(await evaluate(renderer, `JSON.stringify({
+      bold:[...__emphasisView.contentDOM.querySelectorAll('.cm-md-strong')].some(el=>el.textContent.includes('结果与边界：')),
+      raw:__emphasisView.contentDOM.textContent.includes('**'),source:__emphasisView.state.doc.toString()})`))
+    check('补回结束标记立即恢复加粗', restored.bold && !restored.raw && restored.source === original, JSON.stringify(restored))
+  } finally {
+    await evaluate(renderer, `__emphasisView.setState(__emphasisState); document.body.className=${JSON.stringify(savedClass)}; delete window.__emphasisState; delete window.__emphasisView; true`)
+  }
+}
+
 function main() {
   return (async () => {
     mkdirSync(WORK, { recursive: true })
@@ -1161,6 +1253,11 @@ function main() {
         await sleep(250)
       }
       check('夹具已加载', loaded, `编辑器里有没有这份夹具：${loaded}`)
+      if (process.argv.includes('--emphasis-only')) {
+        await checkPunctuationEmphasis(renderer)
+        reportChecks()
+        return
+      }
       await checkCodeCursor(renderer)
       if (process.argv.includes('--cursor-only')) {
         reportChecks()
@@ -1828,6 +1925,7 @@ function main() {
         `字号 ${afterZoom.contentFont} → ${afterReset.contentFont}（默认 ${beforeZoom.contentFont}），字体族 ${JSON.stringify(afterReset.contentFamily)}`)
 
       await checkListTableExport(renderer)
+      await checkPunctuationEmphasis(renderer)
       await checkSelectionVisibility(renderer)
       reportChecks()
     } finally {
