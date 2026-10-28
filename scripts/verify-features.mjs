@@ -1413,80 +1413,62 @@ function main() {
       check('拖选代码块里的文字', (drags.code.text ?? '').includes('const answer'),
         `选中=${JSON.stringify(drags.code.text.slice(0, 60))}`)
 
-      // #138-5 与 #143：面板打开之后正文必须让开它那一列，而且在剩下的可见区域里居中。
-      // 面板是一列浮在窗口上的纸（position: fixed），它不占布局，所以「可见区域」只能靠
-      // 窗口减掉面板那一列算出来。这里不动真实的开关状态，只把面板元素显示出来量几何，
-      // 免得把「面板默认收起」这件事写进用户的设置里。
-      const panelGeometry = async () => JSON.parse(await evaluate(renderer, `(() => {
-        const content = document.querySelector('#editor .cm-content').getBoundingClientRect()
-        const panel = document.getElementById('file-panel').getBoundingClientRect()
-        const left = panel.left <= 4
-        const visible = left
-          ? { left: panel.right, right: window.innerWidth }
-          : { left: 0, right: panel.left }
-        return JSON.stringify({
-          left: Math.round(left),
-          contentLeft: Math.round(content.left),
-          contentRight: Math.round(content.right),
-          visibleLeft: Math.round(visible.left),
-          visibleRight: Math.round(visible.right),
-        })
-      })()`))
-      const measureColumn = async (bodyClass) => {
+      // #138-5 与 #143：四种侧栏组合都必须让正文在剩余可见区域内居中。
+      // 使用真实开关让宽度、显隐及动画走完整接线，结束后恢复初始选择。
+      const initialSidebarState = JSON.parse(await evaluate(renderer, `JSON.stringify({
+        left: document.body.classList.contains('show-left-sidebar'),
+        right: document.body.classList.contains('show-right-sidebar')
+      })`))
+      const setSidebarVisibility = async (left, right) => {
         await evaluate(renderer, `(() => {
-          const panel = document.getElementById('file-panel')
-          panel.dataset.wasHidden = panel.hidden ? '1' : ''
-          panel.hidden = false
-          document.body.classList.add('show-file-panel')
-          ${bodyClass ? `document.body.classList.add('${bodyClass}')` : ''}
+          for (const [side, visible] of [['left', ${left}], ['right', ${right}]]) {
+            if (document.body.classList.contains('show-' + side + '-sidebar') !== visible) {
+              document.getElementById(side + '-sidebar-toggle').click()
+            }
+          }
           return true
         })()`)
         await sleep(400)
+      }
+      const panelGeometry = async () => JSON.parse(await evaluate(renderer, `(() => {
+        const content = document.querySelector('#editor .cm-content').getBoundingClientRect()
+        const scroller = document.querySelector('#editor .cm-scroller')
+        const left = document.body.classList.contains('show-left-sidebar')
+          ? document.getElementById('left-sidebar').getBoundingClientRect().right : 0
+        const right = document.body.classList.contains('show-right-sidebar')
+          ? document.getElementById('right-sidebar').getBoundingClientRect().left : window.innerWidth
+        return JSON.stringify({
+          contentLeft: Math.round(content.left), contentRight: Math.round(content.right),
+          visibleLeft: Math.round(left), visibleRight: Math.round(right),
+          readingLeft: scroller.getBoundingClientRect().left + scroller.clientLeft,
+          readingRight: scroller.getBoundingClientRect().left + scroller.clientLeft + scroller.clientWidth
+        })
+      })()`))
+      for (const [left, right] of [[false, false], [true, false], [false, true], [true, true]]) {
+        await setSidebarVisibility(left, right)
         const m = await panelGeometry()
-        await evaluate(renderer, `(() => {
-          const panel = document.getElementById('file-panel')
-          panel.hidden = panel.dataset.wasHidden === '1'
-          delete panel.dataset.wasHidden
-          document.body.classList.remove('show-file-panel')
-          ${bodyClass ? `document.body.classList.remove('${bodyClass}')` : ''}
-          return true
-        })()`)
-        await sleep(200)
-        return m
-      }
-      const describeColumn = (m) => {
-        const side = m.left ? '左' : '右'
-        return `面板在${side}：正文 ${m.contentLeft}~${m.contentRight}，可见 ${m.visibleLeft}~${m.visibleRight}`
-      }
-      const clearsPanel = (m) => m.contentRight <= m.visibleRight + 1 && m.contentLeft >= m.visibleLeft - 1
-      const centeredInVisible = (m) => Math.abs((m.contentLeft - m.visibleLeft) - (m.visibleRight - m.contentRight)) <= 2
-      for (const [dockClass, label] of [[null, '右'], ['panel-left', '左']]) {
-        const m = await measureColumn(dockClass)
-        check(`面板在${label}：正文不钻到面板底下（#143）`, clearsPanel(m), describeColumn(m))
-        check(`面板在${label}：正文在可见区域里居中（#138-5）`, centeredInVisible(m), describeColumn(m))
+        const label = `左${left ? '开' : '关'}右${right ? '开' : '关'}`
+        const detail = `正文 ${m.contentLeft}~${m.contentRight}，可见 ${m.visibleLeft}~${m.visibleRight}`
+        check(`${label}：正文不钻到侧栏底下（#143）`,
+          m.contentRight <= m.visibleRight + 1 && m.contentLeft >= m.visibleLeft - 1, detail)
+        check(`${label}：正文在可见区域里居中（#138-5）`,
+          Math.abs((m.contentLeft - m.readingLeft) - (m.readingRight - m.contentRight)) <= 2, detail)
       }
 
-      // #137：大纲不能把代码块里的 `#` 当成标题。
-      // 文件面板默认是收起的（manualHidden 默认真），先按它的开关把它打开。
-      await evaluate(renderer, `(() => {
-        if (document.getElementById('file-panel').hidden) document.getElementById('file-toggle-btn').click()
-        document.getElementById('file-panel-outline').click()
-        return true
-      })()`)
-      await sleep(500)
+      // #137：右侧大纲不能把代码块里的 # 当成标题，文件栏同时显示也不影响它。
+      await setSidebarVisibility(true, true)
       const outlineTexts = JSON.parse(await evaluate(renderer,
-        `JSON.stringify([...document.querySelectorAll('#outline-list button')].map((b) => b.textContent))`))
+        `JSON.stringify([...document.querySelectorAll('#right-sidebar .outline-list button')].map((b) => b.textContent))`))
       const outlineDiag = JSON.parse(await evaluate(renderer, `JSON.stringify({
-        panelHidden: document.getElementById('file-panel').hidden,
-        listHidden: document.getElementById('outline-list').hidden,
-        rows: document.getElementById('outline-list').children.length,
-        active: document.getElementById('file-panel-outline').className
+        panelHidden: document.getElementById('right-sidebar').hidden,
+        listHidden: document.querySelector('#right-sidebar .outline-list').hidden,
+        rows: document.querySelector('#right-sidebar .outline-list').children.length,
+        content: document.getElementById('right-sidebar').dataset.content
       })`))
       check('大纲不吃代码块里的 #',
         outlineTexts.includes('一级标题') && !outlineTexts.some((t) => t.includes('不该进大纲')),
         `大纲条目=${JSON.stringify(outlineTexts)} 诊断=${JSON.stringify(outlineDiag)}`)
-      await evaluate(renderer, `document.getElementById('file-panel-files').click()`)
-      await sleep(200)
+      await setSidebarVisibility(initialSidebarState.left, initialSidebarState.right)
 
       // #138-3：查找。按 ⌘F 应该弹出我们自己的面板，敲进去应该真的高亮到。
       for (const type of ['rawKeyDown', 'keyUp']) {

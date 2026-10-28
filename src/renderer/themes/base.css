@@ -26,33 +26,12 @@ html, body {
   --editor-top-gap: 0px;
 }
 
-/* The room the panel's column takes out of the right-hand end of the row. Zero
-   when the panel is hidden, so one expression covers both states. */
-body.show-file-panel {
-  --panel-column: var(--file-panel-width, 220px);
-  --editor-region-width: calc(100% - var(--file-panel-width, 220px));
-}
-
-/* The file panel is fixed so it can remain shell furniture, rather than taking
-   part in the document's scroll. The document region must nevertheless claim
-   only the remaining width: otherwise a centred reading column stays centred in
-   the whole window and appears off-centre as soon as the panel opens. */
-body.show-file-panel.panel-left {
-  --editor-region-offset: var(--file-panel-width, 220px);
-}
-
-/* 正文要避开的那一列。默认两边都是 0，面板显示时才有一边非零，
-   这样下面每条表达式都不用再判断面板开没开。 */
+/* 两侧各占自己的空间；正文与源码共用同一个剩余区域。 */
 body {
-  --panel-inset-left: 0px;
-  --panel-inset-right: 0px;
-}
-
-/* 面板是一列浮在窗口上的纸（position: fixed），它不占布局，所以避让只能自己写：
-   右停靠让右边，左停靠让左边（#143）。同一对值同时给渲染模式与源码模式用，
-   两边正文于是永远落在同一块可见区域里，切换模式时文字不会横向跳（#48）。 */
-body.show-file-panel {
-  --panel-inset-right: 0px;
+  --left-sidebar-space: 0px;
+  --right-sidebar-space: 0px;
+  --editor-region-width: calc(100% - var(--left-sidebar-space) - var(--right-sidebar-space));
+  --editor-region-offset: var(--left-sidebar-space);
 }
 
 body {
@@ -74,7 +53,7 @@ body {
      below the row than in it, and looked like two lines meeting (2026-09-15). */
   --shell-line: color-mix(in srgb, var(--text-color) 5%, var(--chrome-bg));
   /* Every icon control in the row — the plus, the word count, the source
-     toggle, the file-panel toggle — reads at this one grey. They report nothing
+     toggle, the sidebar toggles — reads at this one grey. They report nothing
      by weight: no hover step, no lit on-state, no dimmed disabled step. */
   --row-icon-color: color-mix(in srgb, var(--text-muted) 55%, transparent);
   --search-match-bg: color-mix(in srgb, var(--link-color) 18%, transparent);
@@ -214,7 +193,7 @@ body.platform-win #titlebar {
   min-width: 0;
   /* …and it stops one plus-button short of the column, so that button lands just
      inside the document's side of the row rather than on the panel's paper. */
-  max-width: calc(100% - var(--panel-column, 0px) - 36px);
+  max-width: calc(100% - 36px);
   align-self: stretch;
   display: flex;
   /* Tabs fill the row instead of floating inside it: no gap and no separator
@@ -535,7 +514,7 @@ body.panel-motion-ready #editor-region {
      唯一一处例外是面板那一列（#143）：它是两三百像素的让位，不是呼吸留白。那点宽度要么
      让 #editor 留出来（滚动条落在面板边缘），要么就让正文和滚动条一起待在面板底下。
      正文仍然靠 .cm-content 的自动外边距在剩下的宽度里居中，flex: 0 0 auto 保证它吸得到空间。 */
-  padding: 0 var(--panel-inset-right, 0px) 0 var(--panel-inset-left, 0px);
+  padding: 0;
 }
 
 #source-editor {
@@ -546,11 +525,11 @@ body.panel-motion-ready #editor-region {
      同一块可见区域里（#143）。
      居中还是用 max-width + 自动外边距，不用内边距算：内边距里的百分比是按
      **父容器**宽度解析的，不是元素自己的宽度，公式会算错（实测过）。 */
-  max-width: calc(var(--editor-column-width) + 80px + var(--panel-inset-left, 0px) + var(--panel-inset-right, 0px));
+  max-width: calc(var(--editor-column-width) + 80px);
   margin: 0 auto;
   /* 面板那一列算进内边距：盒子按「列宽 + 两侧让位」居中，正文于是落在可见
      区域中间，而不是整窗中间。面板在右时这两者差 110px，看得出来（实测）。 */
-  padding: calc(40px + var(--editor-top-gap, 0px)) calc(40px + var(--panel-inset-right, 0px)) 40px calc(40px + var(--panel-inset-left, 0px));
+  padding: calc(40px + var(--editor-top-gap, 0px)) 40px 40px;
   box-sizing: border-box;
   border: none;
   outline: none;
@@ -567,76 +546,70 @@ body.panel-motion-ready #editor-region {
   display: block;
 }
 
-/* Same-directory file panel */
-#file-panel {
+/* 侧栏外壳共享外观，内容由左右各自配置。 */
+.sidebar {
   position: fixed;
-  top: calc(var(--chrome-row-height) + var(--tab-bar-height, 0px));
-  right: 0;
+  top: var(--chrome-row-height);
   bottom: 0;
-  width: var(--file-panel-width, 220px);
   z-index: 5;
   display: flex;
   flex-direction: column;
   background: var(--bg-color);
-  /* The same hairline as the row's dividers and its baseline: every seam in the
-     shell is one weight, and --border-color stays for things INSIDE a surface
-     (cards, modals, tables), where a quieter line would read as an accident. */
-  border-left: 1px solid var(--shell-line);
   overflow-y: auto;
   padding: 10px 8px;
   opacity: 0;
   pointer-events: none;
+}
+
+#left-sidebar {
+  left: 0;
+  width: var(--left-sidebar-width, 220px);
+  border-right: 1px solid var(--shell-line);
+  transform: translateX(-100%);
+}
+
+#right-sidebar {
+  right: 0;
+  width: var(--right-sidebar-width, 220px);
+  border-left: 1px solid var(--shell-line);
   transform: translateX(100%);
 }
 
-#file-panel[hidden] {
-  display: none;
-}
+.sidebar[hidden] { display: none; }
 
-body.panel-motion-ready #file-panel {
+body.panel-motion-ready .sidebar {
   transition: transform 180ms cubic-bezier(0.2, 0, 0, 1), opacity 120ms ease-out;
 }
 
-body.show-file-panel #file-panel {
+body.show-left-sidebar #left-sidebar,
+body.show-right-sidebar #right-sidebar {
   opacity: 1;
   pointer-events: auto;
   transform: translateX(0);
 }
 
-/* With the panel shown, the strip starts on the panel's edge line: the first tab
-   sits exactly on the line the panel draws down the window, so the panel's right
-   edge and the tab's left edge are one vertical. The band itself still spans the
-   window — the panel starts below it, and nothing is cut. */
-/* Edge hot zone for resizing the panel; deliberately handle-free — the divider
-   itself is the whole affordance (design.md). The hit area is 7px wide and
-   centred on the border's own column (the panel is border-box, so its 1px edge
-   sits in the last pixel), which puts the feedback exactly ON the line instead of
-   next to it. The tint is neutral: an accent colour belongs to the document, and
-   this is shell furniture. */
-#panel-resizer {
+/* 只用边缘热区调宽，不增加常驻把手。 */
+.sidebar-resizer {
   position: fixed;
-  top: calc(var(--chrome-row-height) + var(--tab-bar-height, 0px));
+  top: var(--chrome-row-height);
   bottom: 0;
-  right: calc(var(--file-panel-width, 220px) - 4px);
   width: 7px;
   cursor: col-resize;
   z-index: 6;
-  background: transparent;
   opacity: 0;
   pointer-events: none;
 }
 
-body.panel-motion-ready #panel-resizer {
-  transition: opacity 120ms ease-out;
-}
+#left-sidebar-resizer { left: calc(var(--left-sidebar-width, 220px) - 4px); }
+#right-sidebar-resizer { right: calc(var(--right-sidebar-width, 220px) - 4px); }
 
-body.show-file-panel #panel-resizer {
+body.show-left-sidebar #left-sidebar-resizer,
+body.show-right-sidebar #right-sidebar-resizer {
   opacity: 1;
   pointer-events: auto;
 }
 
-/* 3px in: the border's column inside a 7px hit area. */
-#panel-resizer::after {
+.sidebar-resizer::after {
   content: '';
   position: absolute;
   top: 0;
@@ -647,119 +620,40 @@ body.show-file-panel #panel-resizer {
   transition: background 0.15s;
 }
 
-/* The panel can sit on either side (View menu, 2026-09-20). Deliberately the
-   smallest version of it: the panel and the room it claims move, the row does
-   not. The buttons stay at the right end where they have always been, and the
-   strip keeps the whole row instead of stopping one column short of it, because
-   the column it stopped short of is now on the other side. */
-body.panel-left #file-panel {
-  left: 0;
-  right: auto;
-  border-left: 0;
-  border-right: 1px solid var(--shell-line);
-  transform: translateX(-100%);
-}
-
-body.panel-left.show-file-panel #file-panel {
-  transform: translateX(0);
-}
-
-body.panel-left #panel-resizer {
-  left: calc(var(--file-panel-width, 220px) - 4px);
-  right: auto;
-}
-
-body.panel-left.show-file-panel {
-  --panel-column: 0px;
-  --panel-inset-left: 0px;
-  --panel-inset-right: 0px;
-}
-
-/* The button cannot follow the panel to the left end (it stays where it has
-   always been), so the icon is the only thing left that can point at the list:
-   the same mirror the file-list icon got when the panel moved right (2026-09-15). */
-body.panel-left #file-toggle-btn svg {
-  transform: scaleX(-1);
-}
-
-/* Motion must never be the only way to understand the panel state. Readers who
-   ask the OS to reduce movement get the same final layout immediately. */
-@media (prefers-reduced-motion: reduce) {
-  body.panel-motion-ready #editor-region,
-  body.panel-motion-ready #file-panel,
-  body.panel-motion-ready #panel-resizer {
-    transition: none;
-  }
-}
-
-#panel-resizer:hover::after,
-#panel-resizer.dragging::after {
+.sidebar-resizer:hover::after,
+.sidebar-resizer.dragging::after {
   background: color-mix(in srgb, var(--text-color) 24%, transparent);
 }
 
-body.panel-resizing {
-  cursor: col-resize;
-  user-select: none;
-}
+body.panel-resizing { cursor: col-resize; user-select: none; }
 
-.file-panel-tabs {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 0;
-  margin: 0 0 8px;
-  padding: 2px;
-  /* One rectangle, not two: the tray carries a surface and nothing else, so the
-     active chip can wear the tabs' exact recipe — paper plus the same 1px
-     hairline — and the sidebar and the strip say "chosen" the same way. */
-  border: none;
-  /* Concentric with the chip inside it: outer radius = inner 4px + the 2px
-     inset, so the two outlines stay the same distance apart all the way round
-     the corner. 6px is also the radius the title-bar buttons already use. */
-  border-radius: 6px;
-  /* The tray is the theme's raised chrome surface, not a hardcoded grey: a
-     hardcoded tint sits at the same luminance as the paper chip in dark themes
-     and the active state dissolves (2026-09-15). With --chrome-bg the chip
-     (paper) reads as pressed-in on dark and lifted on light. */
-  background: var(--chrome-bg);
-}
+/* 拖宽时正文实时跟随边界，不播放开关侧栏的布局动画。 */
+body.panel-resizing #editor-region { transition: none; }
 
-.file-panel-tabs button {
-  /* 26px inside a 2px tray: the switch's whole box is 30px, the height of a
-     tab, and the chip inside sits a step below the tab so the control does not
-     outweigh the document's own chip. */
-  min-height: 26px;
-  /* Transparent, not absent: the active chip adds the hairline, and a border
-     that appears only when chosen would shift the label by a pixel. */
-  border: 1px solid transparent;
-  border-radius: 4px;
-  background: transparent;
+.sidebar-heading {
+  flex: none;
+  padding: 5px 8px 10px;
   color: var(--text-muted);
   font-size: 12px;
-  cursor: pointer;
-  transition: background 0.15s, color 0.15s;
+  font-weight: 500;
 }
 
-.file-panel-tabs button:hover {
-  color: var(--text-color);
+@media (prefers-reduced-motion: reduce) {
+  body.panel-motion-ready #editor-region,
+  body.panel-motion-ready .sidebar,
+  .sidebar-resizer::after { transition: none; }
 }
 
-.file-panel-tabs button.active {
-  background: var(--bg-color);
-  color: var(--text-color);
-  /* Deliberately no shadow: a raised chip reads as hardware in an otherwise
-     flat shell (2026-09-15). The tray/chip contrast alone carries the state. */
-}
-
-#file-list,
-#outline-list {
+.file-list,
+.outline-list {
   list-style: none;
   display: flex;
   flex-direction: column;
   gap: 1px;
 }
 
-#file-list button,
-#outline-list button {
+.file-list button,
+.outline-list button {
   display: flex;
   align-items: center;
   gap: 6px;
@@ -833,41 +727,41 @@ body.panel-resizing {
   white-space: nowrap;
 }
 
-#outline-list {
+.outline-list {
   list-style: none;
   display: flex;
   flex-direction: column;
   gap: 1px;
 }
 
-#file-list[hidden],
-#outline-list[hidden] {
+.file-list[hidden],
+.outline-list[hidden] {
   display: none;
 }
 
-#outline-list button {
+.outline-list button {
   line-height: 1.4;
 }
 
-#outline-list button.empty {
+.outline-list button.empty {
   color: var(--text-muted);
   cursor: default;
   font-style: italic;
 }
 
-#outline-list button.empty:hover {
+.outline-list button.empty:hover {
   background: transparent;
 }
 
 /* Names are shortened with an ellipsis and spelled out in the hover label;
    they are never scrolled, which covers the row it belongs to. */
 
-#file-list button:hover,
-#outline-list button:hover {
+.file-list button:hover,
+.outline-list button:hover {
   background: color-mix(in srgb, var(--text-color) 14%, transparent);
 }
 
-#file-list .file-empty {
+.file-list .file-empty {
   padding: 4px 8px;
   color: var(--text-muted);
   font-size: 12.5px;
@@ -879,8 +773,8 @@ body.panel-resizing {
    lifted chip in every theme (--chrome-bg-hover derives from the theme, stays
    visible on dark and light); colour accents belong to the document, not the
    shell. The old hardcoded orange (#F1752D) ignored themes entirely. */
-#file-list button.active,
-#outline-list button.active {
+.file-list button.active,
+.outline-list button.active {
   background: var(--chrome-bg-hover);
   color: var(--text-color);
 }
@@ -903,7 +797,7 @@ body.panel-resizing {
   border-radius: 4px;
 }
 
-#file-list button.directory {
+.file-list button.directory {
   color: var(--text-color);
   font-weight: 500;
 }
@@ -911,7 +805,7 @@ body.panel-resizing {
 /* The parent row is a row like the others: same radius, same hover, same text
    colour. It used to be squared off with a rule under it, which broke both the
    hover highlight and the shell's line rule. */
-#file-list button.parent {
+.file-list button.parent {
   margin-bottom: 4px;
 }
 
@@ -1434,8 +1328,8 @@ body.presenting {
 }
 
 body.presenting #titlebar,
-body.presenting #file-panel,
-body.presenting #panel-resizer,
+body.presenting .sidebar,
+body.presenting .sidebar-resizer,
 body.presenting #source-editor,
 body.presenting #hover-tip,
 body.presenting #update-banner,

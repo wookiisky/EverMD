@@ -1,0 +1,20 @@
+{
+  "zh": {
+    "leftSidebar": "左侧栏",
+    "rightSidebar": "右侧栏",
+    "showSidebar": "显示侧栏",
+    "files": "文件",
+    "outline": "大纲",
+    "toggleLeft": "显示 / 隐藏左侧栏",
+    "toggleRight": "显示 / 隐藏右侧栏"
+  },
+  "en": {
+    "leftSidebar": "Left Sidebar",
+    "rightSidebar": "Right Sidebar",
+    "showSidebar": "Show Sidebar",
+    "files": "Files",
+    "outline": "Outline",
+    "toggleLeft": "Show / Hide Left Sidebar",
+    "toggleRight": "Show / Hide Right Sidebar"
+  }
+}

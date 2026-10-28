@@ -10,6 +10,8 @@ import { enterPaperLayout, exitPaperLayout } from './print-layout'
 import { SearchPanel } from './editor/search-panel'
 import { applyTheme, loadSavedTheme } from './themes/theme-manager'
 import { setUiLanguage, isChinese, type UiLanguage } from './ui-language'
+import { Sidebars } from './sidebars'
+import type { SidebarSide } from '../shared/sidebar-config'
 import { applyEditorFont, clearEditorFont, loadSavedEditorFont, resetEditorFontSize, showFontSettingsModal, stepEditorFontSize } from './editor/font-settings'
 import './themes/base.css'
 import './themes/premium.css'
@@ -21,12 +23,9 @@ const editorEl = () => document.getElementById('editor') as HTMLElement
 // 正文的滚动在 .cm-scroller 上，不在 #editor 上；见 editor.ts 的 getEditorScroller。
 const editorScroller = () => getEditorScroller() ?? editorEl()
 const sourceEl = () => document.getElementById('source-editor') as HTMLTextAreaElement
-const filePanelEl = () => document.getElementById('file-panel') as HTMLElement
-const fileListEl = () => document.getElementById('file-list') as HTMLElement
-const outlineListEl = () => document.getElementById('outline-list') as HTMLElement
-const fileTabEl = () => document.getElementById('file-panel-files') as HTMLButtonElement
-const outlineTabEl = () => document.getElementById('file-panel-outline') as HTMLButtonElement
-const fileToggleBtnEl = () => document.getElementById('file-toggle-btn') as HTMLButtonElement
+const fileListEls = () => Array.from(document.querySelectorAll<HTMLElement>('.file-list'))
+const outlineListEls = () => Array.from(document.querySelectorAll<HTMLElement>('.sidebar[data-content="outline"][aria-hidden="false"] .outline-list'))
+const sidebars = new Sidebars(side => renderOutline(side))
 const sourceToggleBtnEl = () => document.getElementById('source-toggle-btn') as HTMLButtonElement
 const wordCountEl = () => document.getElementById('word-count') as HTMLElement
 const saveStatusEl = () => document.getElementById('save-status') as HTMLElement
@@ -56,18 +55,6 @@ let applyingProgrammaticChange = false
 // must not start out dirty, or closing an untouched new window would ask to
 // save it.
 let editorReady = false
-// Fresh installs start focused on the document. Once changed, the user's
-// explicit panel preference is preserved.
-let manualHidden = localStorage.getItem('file-panel-hidden') !== '0'
-let panelMode: 'files' | 'outline' = 'files'
-// The panel has to stay in the DOM for the last part of its closing motion.
-// `hidden` still carries the semantic state once that motion finishes, so a
-// rapid re-open cancels the pending hide instead of leaving a dead panel.
-// `transitionend` is the normal cleanup path; this is only a generous safety
-// net for an interrupted or unsupported CSS transition, not a copy of its time.
-const PANEL_HIDE_FALLBACK_MS = 500
-let panelMotionReady = false
-let panelHideCleanup: (() => void) | null = null
 let outlineUpdateQueued = false
 // Outline doubles as a reading-progress view (#64): the entry for the section
 // currently at the top of the viewport is highlighted and kept visible.
@@ -83,45 +70,6 @@ let outlineSyncQueued = false
 let outlineJumping = false
 let outlineJumpTimer: ReturnType<typeof setTimeout> | null = null
 let outlineJumpStartTop = 0
-
-// Resizable file panel: default 220px, drag range 180-420px, persisted
-// locally (design.md: light, no permanent handle, hover feedback only).
-// Applied at module load so the first paint already uses the saved width.
-// The strip's start IS the panel's edge line at every width, so the floor is
-// only about the panel's own contents as before.
-const FILE_PANEL_MIN_WIDTH = 180
-const FILE_PANEL_MAX_WIDTH = 420
-const FILE_PANEL_DEFAULT_WIDTH = 220
-// The width currently applied. Kept beside the CSS variable so a drag that ends
-// without moving the pointer does not write the default over the reader's choice.
-let filePanelWidth = FILE_PANEL_DEFAULT_WIDTH
-
-function clampFilePanelWidth(width: number): number {
-  return Math.min(FILE_PANEL_MAX_WIDTH, Math.max(FILE_PANEL_MIN_WIDTH, Math.round(width)))
-}
-
-function applyFilePanelWidth(width: number): void {
-  filePanelWidth = width
-  document.documentElement.style.setProperty('--file-panel-width', `${width}px`)
-}
-
-applyFilePanelWidth(clampFilePanelWidth(Number.parseInt(localStorage.getItem('file-panel-width') ?? '', 10) || FILE_PANEL_DEFAULT_WIDTH))
-
-// Which side the panel sits on. Only the panel moves: the row keeps its shape and
-// its three buttons stay at the right end, which is the smallest version of this
-// that answers the people who reach for the left (2026-09-20). The preference
-// lives here, beside the panel's width, and main is told about it only so the View
-// menu's checkmarks tell the truth.
-const PANEL_SIDE_KEY = 'colamd-panel-side'
-
-function applyPanelSide(side: string): void {
-  const next = side === 'left' ? 'left' : 'right'
-  document.body.classList.toggle('panel-left', next === 'left')
-  localStorage.setItem(PANEL_SIDE_KEY, next)
-  window.electronAPI?.reportPanelSide?.(next)
-}
-
-applyPanelSide(localStorage.getItem(PANEL_SIDE_KEY) ?? 'right')
 
 // The reading column's width, three fixed steps chosen from the View menu. The
 // preference is a body class rather than an inline style, so the same class
@@ -370,18 +318,19 @@ const ROW_TIP_DELAY = 450
 
 let tipTimer: ReturnType<typeof setTimeout> | undefined
 
-function showTip(anchor: HTMLElement, text: string, side: 'below' | 'right'): void {
+function showTip(anchor: HTMLElement, text: string, side: 'below' | 'left' | 'right'): void {
   const tip = document.getElementById('hover-tip') as HTMLElement | null
   if (!tip) return
   tip.textContent = text
   tip.hidden = false
   const rect = anchor.getBoundingClientRect()
   const width = tip.offsetWidth
-  if (side === 'right') {
+  if (side !== 'below') {
     // Beside the panel and level with the row: the label describes the list, so
     // it must not cover it.
     const height = tip.offsetHeight
-    tip.style.left = `${Math.round(Math.min(rect.right + 8, window.innerWidth - width - 8))}px`
+    const left = side === 'right' ? rect.right + 8 : rect.left - width - 8
+    tip.style.left = `${Math.round(Math.max(8, Math.min(left, window.innerWidth - width - 8)))}px`
     tip.style.top = `${Math.round(Math.min(Math.max(8, rect.top + rect.height / 2 - height / 2), window.innerHeight - height - 8))}px`
     return
   }
@@ -389,7 +338,7 @@ function showTip(anchor: HTMLElement, text: string, side: 'below' | 'right'): vo
   tip.style.top = `${Math.round(rect.bottom + 7)}px`
 }
 
-function scheduleTip(anchor: HTMLElement, text: string, side: 'below' | 'right', delay: number): void {
+function scheduleTip(anchor: HTMLElement, text: string, side: 'below' | 'left' | 'right', delay: number): void {
   clearTimeout(tipTimer)
   tipTimer = setTimeout(() => showTip(anchor, text, side), delay)
 }
@@ -1037,9 +986,7 @@ function updateUiLanguage(): void {
   document.documentElement.lang = zh ? 'zh-CN' : 'en'
   document.title = 'ColaMD'
   untitledName = zh ? '未命名' : 'Untitled'
-  fileTabEl().textContent = zh ? '文件' : 'Files'
-  outlineTabEl().textContent = zh ? '大纲' : 'Outline'
-  setToolbarTip(fileToggleBtnEl(), zh ? '显示 / 隐藏文件列表 (⌘\\)' : 'Show / Hide File List (⌘\\)')
+  sidebars.updateLabels()
   const menuBtn = document.getElementById('app-menu-btn')
   if (menuBtn) setToolbarTip(menuBtn, zh ? '菜单' : 'Menu')
   updateSourceToggle()
@@ -1115,81 +1062,9 @@ function toggleSourceMode(): void {
   scheduleOutlineUpdate()
 }
 
-function cancelPendingPanelHide(): void {
-  panelHideCleanup?.()
-  panelHideCleanup = null
-}
-
-function hidePanelAfterTransition(panel: HTMLElement): void {
-  const finish = () => {
-    cleanup()
-    // A second toggle may have re-opened the panel while the close transition
-    // was still in flight. Only the state that is still closed may hide it.
-    if (!document.body.classList.contains('show-file-panel')) panel.hidden = true
-  }
-  const onTransitionEnd = (event: TransitionEvent) => {
-    if (event.target === panel && event.propertyName === 'transform') finish()
-  }
-  const timeout = window.setTimeout(finish, PANEL_HIDE_FALLBACK_MS)
-  const cleanup = () => {
-    window.clearTimeout(timeout)
-    panel.removeEventListener('transitionend', onTransitionEnd)
-    if (panelHideCleanup === cleanup) panelHideCleanup = null
-  }
-  panel.addEventListener('transitionend', onTransitionEnd)
-  panelHideCleanup = cleanup
-}
-
+// 文件和标签切换只刷新外壳，侧栏偏好不跟随文档变化。
 function updatePanelVisibility(): void {
-  const show = !manualHidden
-  const panel = filePanelEl()
-  cancelPendingPanelHide()
-
-  if (show) {
-    // Start from the off-canvas CSS state, then enter it on the next style
-    // change. Reading offsetWidth deliberately commits that start position,
-    // otherwise display:none → visible would skip the opening transition.
-    panel.hidden = false
-    panel.setAttribute('aria-hidden', 'false')
-    if (!document.body.classList.contains('show-file-panel')) {
-      if (panelMotionReady) void panel.offsetWidth
-      document.body.classList.add('show-file-panel')
-    }
-  } else {
-    // A delayed `hidden` keeps the exit motion visible. If a file-row button
-    // owned focus, move it out before exposing an aria-hidden subtree.
-    if (panel.contains(document.activeElement)) fileToggleBtnEl().focus()
-    panel.setAttribute('aria-hidden', 'true')
-    document.body.classList.remove('show-file-panel')
-    if (panelMotionReady && !panel.hidden && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
-      hidePanelAfterTransition(panel)
-    } else {
-      panel.hidden = true
-    }
-  }
-
-  fileToggleBtnEl().classList.toggle('active', show)
-  fileListEl().hidden = panelMode !== 'files'
-  outlineListEl().hidden = panelMode !== 'outline'
-  fileTabEl().classList.toggle('active', panelMode === 'files')
-  fileTabEl().setAttribute('aria-selected', String(panelMode === 'files'))
-  outlineTabEl().classList.toggle('active', panelMode === 'outline')
-  outlineTabEl().setAttribute('aria-selected', String(panelMode === 'outline'))
-
-  // Avoid animating a restored visible panel on the initial paint. Every later
-  // keyboard/menu/button toggle uses the same motion.
-  if (!panelMotionReady) {
-    requestAnimationFrame(() => {
-      panelMotionReady = true
-      document.body.classList.add('panel-motion-ready')
-    })
-  }
-}
-
-function setPanelMode(mode: 'files' | 'outline'): void {
-  panelMode = mode
-  updatePanelVisibility()
-  if (mode === 'outline') renderOutline()
+  sidebars.refresh()
 }
 
 interface OutlineItem {
@@ -1233,74 +1108,77 @@ function visualOutline(): OutlineItem[] {
 }
 
 function outlineVisible(): boolean {
-  return !manualHidden && panelMode === 'outline'
+  return sidebars.hasVisibleContent('outline')
 }
 
-function renderOutline(): void {
+function renderOutline(side?: SidebarSide): void {
   // The outline is only ever read from the panel, which is hidden by default.
   // Rebuilding it on every keystroke (and on every scroll) burned a full DOM
   // teardown plus forced layout per frame for output nobody could see.
   if (!outlineVisible()) return
-  const list = outlineListEl()
   outlineItems = sourceModeActive ? sourceOutline(sourceEl().value) : visualOutline()
-  list.innerHTML = ''
+  const lists = outlineListEls().filter(list => !side || list.closest<HTMLElement>('.sidebar')?.id === `${side}-sidebar`)
+  for (const list of lists) list.innerHTML = ''
   if (outlineItems.length === 0) {
     outlineActiveIndex = -1
     return
   }
-  outlineItems.forEach((item, index) => {
-    const entry = document.createElement('li')
-    const button = document.createElement('button')
-    button.dataset.headingIndex = String(index)
-    button.type = 'button'
-    button.textContent = item.title
-    // Hover keeps truncated headings readable while the panel width stays
-    // as-is in this change (#64).
-    button.title = item.title
-    button.style.paddingLeft = `${8 + (item.level - 1) * 12}px`
-    button.addEventListener('click', () => {
-      // Re-resolve the entry against the live text: cached references die when
-      // the editor content is re-set (#64).
-      const current = (sourceModeActive ? sourceOutline(sourceEl().value) : visualOutline())[index]
-      if (!current) return
-      if (sourceModeActive) {
-        beginOutlineJump()
-        const source = sourceEl()
-        const lineHeight = Number.parseFloat(getComputedStyle(source).lineHeight) || 24
-        source.scrollTop = Math.max(0, (current.line ?? 0) * lineHeight - lineHeight)
-        source.focus()
-        revealSourceHeading(source, current.line ?? 0)
-      } else if (current.line !== undefined) {
-        // 视觉模式：交给编辑器自己跳，它会同时把光标放过去。
-        // flashHeadingOnArrival 的信号靠编辑器内部的落点装饰发出，这里只管跳。
-        beginOutlineJump()
-        jumpToLine(current.line)
-      }
-      setActiveOutlineIndex(index)
+  for (const list of lists) {
+    outlineItems.forEach((item, index) => {
+      const entry = document.createElement('li')
+      const button = document.createElement('button')
+      button.dataset.headingIndex = String(index)
+      button.type = 'button'
+      button.textContent = item.title
+      // Hover keeps truncated headings readable while the panel width stays
+      // as-is in this change (#64).
+      button.title = item.title
+      button.style.paddingLeft = `${8 + (item.level - 1) * 12}px`
+      button.addEventListener('click', () => {
+        // Re-resolve the entry against the live text: cached references die when
+        // the editor content is re-set (#64).
+        const current = (sourceModeActive ? sourceOutline(sourceEl().value) : visualOutline())[index]
+        if (!current) return
+        if (sourceModeActive) {
+          beginOutlineJump()
+          const source = sourceEl()
+          const lineHeight = Number.parseFloat(getComputedStyle(source).lineHeight) || 24
+          source.scrollTop = Math.max(0, (current.line ?? 0) * lineHeight - lineHeight)
+          source.focus()
+          revealSourceHeading(source, current.line ?? 0)
+        } else if (current.line !== undefined) {
+          // 视觉模式：交给编辑器自己跳，它会同时把光标放过去。
+          // flashHeadingOnArrival 的信号靠编辑器内部的落点装饰发出，这里只管跳。
+          beginOutlineJump()
+          jumpToLine(current.line)
+        }
+        setActiveOutlineIndex(index)
+      })
+      entry.appendChild(button)
+      list.appendChild(entry)
     })
-    entry.appendChild(button)
-    list.appendChild(entry)
-  })
+  }
   applyOutlineActive()
   scheduleOutlineActiveSync()
 }
 
 function applyOutlineActive(): void {
-  const list = outlineListEl()
-  const buttons = list.querySelectorAll<HTMLButtonElement>('button')
-  buttons.forEach((button, index) => {
-    button.classList.toggle('active', index === outlineActiveIndex)
-  })
-  // Keep the tracked section visible in long documents.
-  const active = buttons[outlineActiveIndex]
-  if (active) revealOutlineEntry(active)
+  for (const list of outlineListEls()) {
+    const buttons = list.querySelectorAll<HTMLButtonElement>('button')
+    buttons.forEach((button, index) => {
+      button.classList.toggle('active', index === outlineActiveIndex)
+    })
+    // Keep the tracked section visible in long documents.
+    const active = buttons[outlineActiveIndex]
+    if (active) revealOutlineEntry(active)
+  }
 }
 
 // Manual reveal of the active entry inside the panel. scrollIntoView() must
 // not be used here: it would also interrupt the smooth scroll of the content
 // pane started by an outline click, so only the panel's own scroller moves.
 function revealOutlineEntry(button: HTMLButtonElement): void {
-  const panel = filePanelEl()
+  const panel = button.closest<HTMLElement>('.sidebar')!
   const panelTop = panel.getBoundingClientRect().top
   const top = button.getBoundingClientRect().top - panelTop + panel.scrollTop
   const bottom = top + button.offsetHeight
@@ -1427,46 +1305,6 @@ function scheduleOutlineUpdate(): void {
   })
 }
 
-function togglePanel(): void {
-  manualHidden = !manualHidden
-  localStorage.setItem('file-panel-hidden', manualHidden ? '1' : '0')
-  updatePanelVisibility()
-}
-
-// Drag the panel's inner edge to resize it; the width clamps to the
-// FILE_PANEL_* range and persists on release. Pointer capture keeps the drag
-// alive over iframes and selected text.
-function initPanelResize(): void {
-  const resizer = document.getElementById('panel-resizer') as HTMLDivElement | null
-  if (!resizer) return
-  resizer.addEventListener('pointerdown', (event) => {
-    event.preventDefault()
-    resizer.setPointerCapture(event.pointerId)
-    resizer.classList.add('dragging')
-    document.body.classList.add('panel-resizing')
-    // The width is the pointer's distance from the edge the panel hangs off, and
-    // that edge is not always the right one (#118): measuring the left side from
-    // the window's right edge pinned the panel to the maximum on the first move.
-    const onLeft = document.body.classList.contains('panel-left')
-    let width = filePanelWidth
-    const move = (moveEvent: PointerEvent) => {
-      width = clampFilePanelWidth(onLeft ? moveEvent.clientX : window.innerWidth - moveEvent.clientX)
-      applyFilePanelWidth(width)
-    }
-    const finish = () => {
-      resizer.removeEventListener('pointermove', move)
-      resizer.removeEventListener('pointerup', finish)
-      resizer.removeEventListener('pointercancel', finish)
-      resizer.classList.remove('dragging')
-      document.body.classList.remove('panel-resizing')
-      localStorage.setItem('file-panel-width', String(width))
-    }
-    resizer.addEventListener('pointermove', move)
-    resizer.addEventListener('pointerup', finish)
-    resizer.addEventListener('pointercancel', finish)
-  })
-}
-
 function updateFileTitle(): void {
   // The filename is shown by the tab; the window title is the only place left
   // that needs it spelled out (there is no centred title in the title bar).
@@ -1538,66 +1376,69 @@ function togglePanelDirectory(dir: string): void {
 function renderFileList(files: import('../preload/index').SiblingFile[]): void {
   panelRoot = files
   hideTip()
-  const list = fileListEl()
-  list.innerHTML = ''
-  for (const row of panelRows()) {
-    const li = document.createElement('li')
-    const indent = 8 + row.depth * PANEL_INDENT
-    if (row.empty) {
-      const empty = document.createElement('div')
-      empty.className = 'file-empty'
-      empty.style.paddingLeft = `${indent}px`
-      empty.textContent = isChinese() ? '这个文件夹是空的' : 'This folder is empty'
-      li.appendChild(empty)
+  const rows = panelRows()
+  for (const list of fileListEls()) {
+    list.innerHTML = ''
+    for (const row of rows) {
+      const li = document.createElement('li')
+      const indent = 8 + row.depth * PANEL_INDENT
+      if (row.empty) {
+        const empty = document.createElement('div')
+        empty.className = 'file-empty'
+        empty.style.paddingLeft = `${indent}px`
+        empty.textContent = isChinese() ? '这个文件夹是空的' : 'This folder is empty'
+        li.appendChild(empty)
+        list.appendChild(li)
+        continue
+      }
+      const f = row.file
+      const btn = document.createElement('button')
+      btn.style.paddingLeft = `${indent}px`
+      const chevron = document.createElement('span')
+      chevron.className = `file-entry-chevron${row.expanded ? ' expanded' : ''}${f.kind === 'parent' ? ' back' : ''}`
+      chevron.setAttribute('aria-hidden', 'true')
+      // Same 10-unit box and stroke as the expander chevrons: drawing the way back
+      // in a 16-unit box scaled into the same 10px slot made it smaller and its
+      // stroke lighter, so the two arrows read as different controls (2026-09-15).
+      if (f.kind === 'parent') chevron.innerHTML = '<svg viewBox="0 0 10 10"><path d="M8.5 5H2M4.5 2.5 2 5l2.5 2.5"/></svg>'
+      else if (row.expandable) chevron.innerHTML = '<svg viewBox="0 0 10 10"><path d="M3.5 1.5 7 5l-3.5 3.5"/></svg>'
+      const icon = document.createElement('span')
+      icon.className = `file-entry-icon ${f.kind}`
+      icon.setAttribute('aria-hidden', 'true')
+      icon.innerHTML = f.kind === 'directory'
+        ? '<svg viewBox="0 0 16 16"><path d="M2.5 4.5h4l1.5 1.5h6v6.5h-11.5z"/><path d="M2.5 4.5v-1h4l1.5 1.5"/></svg>'
+        : '<svg viewBox="0 0 16 16"><path d="M4 2.5h5l3 3v8H4z"/><path d="M9 2.5v3h3"/></svg>'
+      const label = document.createElement('span')
+      label.className = 'file-entry-name'
+      // Words, not two dots: the row has the space and ".." never said where it goes.
+      label.textContent = f.kind === 'parent' ? (isChinese() ? '返回' : 'Back') : f.name
+      btn.addEventListener('mouseenter', () => {
+        // Only a name that is actually cut off is worth a label; one that fits
+        // says itself. No marquee: sliding the name under the icon to read it
+        // covers the row it belongs to.
+        if (label.scrollWidth <= label.clientWidth + 1) return
+        const side = list.closest<HTMLElement>('.sidebar')?.id === 'right-sidebar' ? 'left' : 'right'
+        scheduleTip(btn, label.textContent ?? '', side, ROW_TIP_DELAY)
+      })
+      btn.addEventListener('mouseleave', hideTip)
+      btn.title = f.kind === 'directory'
+        ? (isChinese()
+            ? `${row.expanded ? '收起' : '展开'} ${f.name}`
+            : `${row.expanded ? 'Collapse' : 'Expand'} ${f.name}`)
+        : f.kind === 'parent' ? (isChinese() ? '返回上级目录' : 'Go to parent directory') : f.name
+      btn.dataset.path = f.path
+      btn.dataset.kind = f.kind
+      btn.classList.toggle('directory', f.kind === 'directory')
+      btn.classList.toggle('parent', f.kind === 'parent')
+      if (f.path === currentFilePath) btn.classList.add('active')
+      // The way back sits in the expander's column and its name takes the icon's,
+      // so the row reads left to right like every other one instead of hanging a
+      // column in. It has no icon of its own, which is why no slot is skipped.
+      if (f.kind === 'parent') btn.append(chevron, label)
+      else btn.append(chevron, icon, label)
+      li.appendChild(btn)
       list.appendChild(li)
-      continue
     }
-    const f = row.file
-    const btn = document.createElement('button')
-    btn.style.paddingLeft = `${indent}px`
-    const chevron = document.createElement('span')
-    chevron.className = `file-entry-chevron${row.expanded ? ' expanded' : ''}${f.kind === 'parent' ? ' back' : ''}`
-    chevron.setAttribute('aria-hidden', 'true')
-    // Same 10-unit box and stroke as the expander chevrons: drawing the way back
-    // in a 16-unit box scaled into the same 10px slot made it smaller and its
-    // stroke lighter, so the two arrows read as different controls (2026-09-15).
-    if (f.kind === 'parent') chevron.innerHTML = '<svg viewBox="0 0 10 10"><path d="M8.5 5H2M4.5 2.5 2 5l2.5 2.5"/></svg>'
-    else if (row.expandable) chevron.innerHTML = '<svg viewBox="0 0 10 10"><path d="M3.5 1.5 7 5l-3.5 3.5"/></svg>'
-    const icon = document.createElement('span')
-    icon.className = `file-entry-icon ${f.kind}`
-    icon.setAttribute('aria-hidden', 'true')
-    icon.innerHTML = f.kind === 'directory'
-      ? '<svg viewBox="0 0 16 16"><path d="M2.5 4.5h4l1.5 1.5h6v6.5h-11.5z"/><path d="M2.5 4.5v-1h4l1.5 1.5"/></svg>'
-      : '<svg viewBox="0 0 16 16"><path d="M4 2.5h5l3 3v8H4z"/><path d="M9 2.5v3h3"/></svg>'
-    const label = document.createElement('span')
-    label.className = 'file-entry-name'
-    // Words, not two dots: the row has the space and ".." never said where it goes.
-    label.textContent = f.kind === 'parent' ? (isChinese() ? '返回' : 'Back') : f.name
-    btn.addEventListener('mouseenter', () => {
-      // Only a name that is actually cut off is worth a label; one that fits
-      // says itself. No marquee: sliding the name under the icon to read it
-      // covers the row it belongs to.
-      if (label.scrollWidth <= label.clientWidth + 1) return
-      scheduleTip(btn, label.textContent ?? '', 'right', ROW_TIP_DELAY)
-    })
-    btn.addEventListener('mouseleave', hideTip)
-    btn.title = f.kind === 'directory'
-      ? (isChinese()
-          ? `${row.expanded ? '收起' : '展开'} ${f.name}`
-          : `${row.expanded ? 'Collapse' : 'Expand'} ${f.name}`)
-      : f.kind === 'parent' ? (isChinese() ? '返回上级目录' : 'Go to parent directory') : f.name
-    btn.dataset.path = f.path
-    btn.dataset.kind = f.kind
-    btn.classList.toggle('directory', f.kind === 'directory')
-    btn.classList.toggle('parent', f.kind === 'parent')
-    if (f.path === currentFilePath) btn.classList.add('active')
-    // The way back sits in the expander's column and its name takes the icon's,
-    // so the row reads left to right like every other one instead of hanging a
-    // column in. It has no icon of its own, which is why no slot is skipped.
-    if (f.kind === 'parent') btn.append(chevron, label)
-    else btn.append(chevron, icon, label)
-    li.appendChild(btn)
-    list.appendChild(li)
   }
 }
 
@@ -1727,7 +1568,7 @@ function getExportSnapshot(content: string): {
     document: editorRoot ? documentHTMLFrom(editorRoot) : '',
     styles,
     bodyClass: Array.from(document.body.classList)
-      .filter((name) => name !== 'show-file-panel' && name !== 'paper')
+      .filter((name) => name !== 'show-left-sidebar' && name !== 'show-right-sidebar' && name !== 'paper')
       .join(' '),
     background: getComputedStyle(document.body).backgroundColor,
   }))
@@ -1953,44 +1794,42 @@ async function init(): Promise<void> {
 
   // Save before switching files. If saving is cancelled or fails, preserve the
   // current document rather than opening another file over it.
-  fileListEl().addEventListener('click', async (e) => {
-    const btn = (e.target as HTMLElement).closest('button[data-path]') as HTMLButtonElement | null
-    if (!btn || !btn.dataset.path) return
-    // A directory expands in place; the tree only ever grows downward.
-    if (btn.dataset.kind === 'directory') {
-      togglePanelDirectory(btn.dataset.path)
-      return
-    }
-    if (btn.dataset.path === currentFilePath) return
-    // ⌘/Ctrl click opens the file in a tab of its own (design.md).
-    if (btn.dataset.kind === 'file' && (e.metaKey || e.ctrlKey)) {
-      await openFileInNewTab(btn.dataset.path)
-      return
-    }
-    if (btn.dataset.kind === 'file' && dirty && !await saveCurrent()) return
-    await api.openSibling(btn.dataset.path)
-  })
+  for (const list of fileListEls()) {
+    list.addEventListener('click', async (e) => {
+      const btn = (e.target as HTMLElement).closest('button[data-path]') as HTMLButtonElement | null
+      if (!btn || !btn.dataset.path) return
+      // A directory expands in place; the tree only ever grows downward.
+      if (btn.dataset.kind === 'directory') {
+        togglePanelDirectory(btn.dataset.path)
+        return
+      }
+      if (btn.dataset.path === currentFilePath) return
+      // ⌘/Ctrl click opens the file in a tab of its own (design.md).
+      if (btn.dataset.kind === 'file' && (e.metaKey || e.ctrlKey)) {
+        await openFileInNewTab(btn.dataset.path)
+        return
+      }
+      if (btn.dataset.kind === 'file' && dirty && !await saveCurrent()) return
+      await api.openSibling(btn.dataset.path)
+    })
 
-  fileToggleBtnEl().addEventListener('click', togglePanel)
-  // Right-click on a file panel entry opens the native context menu. The
-  // parent entry has no target worth acting on, so it keeps the default.
-  fileListEl().addEventListener('contextmenu', (e) => {
-    const btn = (e.target as HTMLElement).closest('button[data-path]') as HTMLButtonElement | null
-    const path = btn?.dataset.path
-    const kind = btn?.dataset.kind
-    if (!path || kind === 'parent') return
-    e.preventDefault()
-    void api.showEntryContextMenu(path, kind === 'directory' ? 'directory' : 'file')
-  })
-  initPanelResize()
+    // Right-click on a file panel entry opens the native context menu. The
+    // parent entry has no target worth acting on, so it keeps the default.
+    list.addEventListener('contextmenu', (e) => {
+      const btn = (e.target as HTMLElement).closest('button[data-path]') as HTMLButtonElement | null
+      const path = btn?.dataset.path
+      const kind = btn?.dataset.kind
+      if (!path || kind === 'parent') return
+      e.preventDefault()
+      void api.showEntryContextMenu(path, kind === 'directory' ? 'directory' : 'file')
+    })
+  }
+  sidebars.init()
   bindTabBar(api)
   // The launch document (the welcome screen or a restored file) is a tab from
   // the first frame, so the strip never renders without one.
   ensureTab()
   renderTabBar()
-  fileTabEl().addEventListener('click', () => setPanelMode('files'))
-  outlineTabEl().addEventListener('click', () => setPanelMode('outline'))
-  api.onToggleFilePanel(() => togglePanel())
 
   sourceToggleBtnEl().addEventListener('click', toggleSourceMode)
   api.onToggleSourceMode(() => toggleSourceMode())
@@ -2004,9 +1843,9 @@ async function init(): Promise<void> {
   // The outline tracks scrolling in both modes so it doubles as a progress
   // view (#64); rAF keeps the rect reads to one batch per frame. `scrollend`
   // also releases the outline jump lock as soon as a jump scroll settles.
-  editorEl().addEventListener('scroll', scheduleOutlineActiveSync, { passive: true })
+  editorScroller().addEventListener('scroll', scheduleOutlineActiveSync, { passive: true })
   sourceEl().addEventListener('scroll', scheduleOutlineActiveSync, { passive: true })
-  editorEl().addEventListener('scrollend', endOutlineJump)
+  editorScroller().addEventListener('scrollend', endOutlineJump)
   sourceEl().addEventListener('scrollend', endOutlineJump)
   // Anchor-link jumps start inside the editor; the phase signal engages the
   // same jump lock the outline clicks use, so the highlight cannot be stolen
@@ -2097,9 +1936,6 @@ async function init(): Promise<void> {
 
   api.onSetTheme((theme) => applyTheme(theme))
 
-  // The View menu's two choices land here. Nothing else follows the panel: the
-  // side is a preference of the renderer's, like the panel's width.
-  api.onSetPanelSide((side) => applyPanelSide(side))
   api.onSetPageWidth((width) => applyPageWidth(width))
 
   // macOS takes the traffic lights away in full screen, so the row drops the 96px

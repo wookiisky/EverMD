@@ -64,7 +64,7 @@ function exportHTML(snapshot: ImageExportSnapshot, preset: ImageExportPreset): s
     html, body { width: ${width}px !important; min-width: ${width}px !important; height: auto !important; min-height: 0 !important; overflow: visible !important; background: ${snapshot.background} !important; }
     body { margin: 0 !important; padding: 0 !important; }
     *::-webkit-scrollbar { display: none !important; }
-    #titlebar, #file-panel, #source-editor, #update-banner { display: none !important; }
+    #titlebar, #left-sidebar, #right-sidebar, #left-sidebar-resizer, #right-sidebar-resizer, #source-editor, #update-banner { display: none !important; }
     #editor { display: block !important; width: ${width}px !important; height: auto !important; min-height: 0 !important; overflow: visible !important; margin: 0 !important; padding: ${padding}px !important; background: ${snapshot.background} !important; }
     #editor .cm-content { width: auto !important; max-width: none !important; min-height: 0 !important; margin: 0 !important; padding: 0 !important; }
   </style>

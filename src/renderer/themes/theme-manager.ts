@@ -65,7 +65,7 @@ export function applyTheme(name: string, customCSS?: string): void {
     // every theme — including a light strip on a black row (real Windows test,
     // 2026-09-15). Painting each colour onto a canvas and reading the pixel back
     // gives the platform the one string it understands.
-    const iconEl = document.getElementById('file-toggle-btn') ?? document.body
+    const iconEl = document.getElementById('left-sidebar-toggle') ?? document.body
     const icon = getComputedStyle(iconEl).color
     const surfaceHex = painted(surface, '#ffffff')
     window.electronAPI?.reportTitlebarColors?.({ background: surfaceHex, symbol: painted(icon, surfaceHex) })

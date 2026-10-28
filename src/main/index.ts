@@ -6,6 +6,8 @@ import { fileURLToPath, pathToFileURL } from 'url'
 import { appendFile, readFile, writeFile, readdir, copyFile, mkdir, stat } from 'fs/promises'
 import { watch, FSWatcher, existsSync, readdirSync, readFileSync, writeFileSync, statSync } from 'fs'
 import { resolveMarkdownLink } from './markdown-link'
+import type { SidebarPreferences } from '../shared/sidebar-config'
+import sidebarLabels from '../shared/sidebar-labels.json'
 
 const startupStartedAt = performance.now()
 const startupTraceEnabled = process.env.COLAMD_STARTUP_TRACE === '1'
@@ -380,6 +382,14 @@ function createWindow(
     }
   })
   markStartup('window-created')
+  sidebarWindowOrder.add(win)
+
+  // 菜单跟随当前窗口，后台窗口的偏好上报不能覆盖正在使用的窗口。
+  win.on('focus', () => {
+    sidebarWindowOrder.delete(win)
+    sidebarWindowOrder.add(win)
+    syncSidebarMenu(win)
+  })
 
   // The renderer owns the shell's layout, so it needs to know when the window
   // enters or leaves macOS full screen: full screen takes the traffic lights
@@ -467,6 +477,9 @@ function createWindow(
     stopWatching(state)
     windowStates.delete(win.id)
     fullScreenBeforeSlideshow.delete(win.id)
+    sidebarWindowOrder.delete(win)
+    // 离屏或不可聚焦窗口关闭后不一定触发其他窗口的 focus。
+    syncSidebarMenu(sidebarTargetWindow())
   })
 
   updateTitle(win)
@@ -1384,7 +1397,7 @@ ipcMain.handle('export-html', async (event, snapshot: {
   <style>${exportStyles}
     html, body { height: auto; overflow: visible; }
     body { min-width: 320px; }
-    #titlebar, #file-panel, #source-editor { display: none !important; }
+    #titlebar, #left-sidebar, #right-sidebar, #left-sidebar-resizer, #right-sidebar-resizer, #source-editor { display: none !important; }
     #editor { height: auto !important; min-height: 100vh; overflow: visible !important; padding: 0 !important; }
   </style>
 </head>
@@ -1477,10 +1490,14 @@ ipcMain.handle('load-theme-css', async (_event, fileName: string) => {
 // in place (never rebuild the menu from an IPC callback — setApplicationMenu
 // inside a menu-triggered path hangs the main process).
 let currentTheme = 'elegant'
-// Which side of the window the file panel occupies. The renderer owns the
-// preference (localStorage, beside the panel's width) and reports it here so the
-// View menu's checkmarks tell the truth; main keeps no copy of it on disk.
-let currentPanelSide: 'left' | 'right' = 'right'
+// 渲染层拥有侧栏偏好；主进程仅缓存各窗口状态以同步原生菜单。
+let currentSidebars: SidebarPreferences = {
+  left: { content: 'files', visible: false, width: 220 },
+  right: { content: 'outline', visible: false, width: 220 }
+}
+const sidebarPreferencesByWindow = new WeakMap<BrowserWindow, SidebarPreferences>()
+// 显式记录创建与聚焦顺序，不依赖 getAllWindows() 的枚举次序。
+const sidebarWindowOrder = new Set<BrowserWindow>()
 let currentPageWidth: 'narrow' | 'standard' | 'wide' = 'standard'
 // 渲染层持久化视图偏好，主进程只同步原生菜单勾选状态。
 let currentHideBlankLines = false
@@ -1620,11 +1637,13 @@ ipcMain.handle('report-theme', (_event, theme: unknown) => {
   updateThemeMenuChecks()
 })
 
-ipcMain.handle('report-panel-side', (_event, side: unknown) => {
-  const next: 'left' | 'right' = side === 'left' ? 'left' : 'right'
-  if (next === currentPanelSide) return
-  currentPanelSide = next
-  updatePanelSideMenuChecks()
+ipcMain.handle('report-sidebars', (event, preferences: SidebarPreferences) => {
+  const win = BrowserWindow.fromWebContents(event.sender)
+  if (!win) return
+  sidebarPreferencesByWindow.set(win, preferences)
+  if (win !== sidebarTargetWindow()) return
+  currentSidebars = preferences
+  updateSidebarMenuChecks()
 })
 
 ipcMain.handle('report-page-width', (_event, width: unknown) => {
@@ -1757,6 +1776,9 @@ function sendToFocused(channel: string, ...args: unknown[]): void {
 
 function buildMenu(): void {
   const isMac = process.platform === 'darwin'
+  const sidebarWindow = sidebarTargetWindow()
+  const preferences = sidebarWindow && sidebarPreferencesByWindow.get(sidebarWindow)
+  if (preferences) currentSidebars = preferences
 
   // Scan custom themes synchronously for menu building
   const customThemeItems: Electron.MenuItemConstructorOptions[] = []
@@ -1788,8 +1810,7 @@ function buildMenu(): void {
         recentOpen: '最近打开', restoreOnLaunch: '启动时打开上次文档', clearRecent: '清除最近记录', noRecent: '没有最近打开的文件',
         exportPDF: '导出 PDF...', exportSlidesPDF: '导出幻灯片 PDF...', exportHTML: '导出 HTML...', exportWord: '导出 Word...', exportImageDesktop: '导出图片（电脑阅读）...', exportImageMobile: '导出图片（手机阅读）...', find: '查找',
         setDefault: '设置为默认应用...',
-        filePanel: '显示 / 隐藏文件列表', sourceMode: '切换 Markdown 源码', hideBlankLines: '隐藏空行',
-        panelSide: '文件列表位置', panelSideLeft: '在左侧', panelSideRight: '在右侧',
+        sourceMode: '切换 Markdown 源码', hideBlankLines: '隐藏空行',
         pageWidth: '正文宽度', pageWidthNarrow: '窄', pageWidthStandard: '标准', pageWidthWide: '宽',
         light: '浅色', dark: '深色', elegant: '雅致',
         sepia: '羊皮纸', notion: '简白', bear: '熊红', writer: '作家',
@@ -1810,8 +1831,7 @@ function buildMenu(): void {
         recentOpen: 'Open Recent', restoreOnLaunch: 'Reopen last document at launch', clearRecent: 'Clear Recent', noRecent: 'No recent files',
         exportPDF: 'Export PDF...', exportSlidesPDF: 'Export Slides PDF...', exportHTML: 'Export HTML...', exportWord: 'Export Word...', exportImageDesktop: 'Export Image (Desktop)...', exportImageMobile: 'Export Image (Mobile)...', find: 'Find',
         setDefault: 'Set as Default...',
-        filePanel: 'Show / Hide File List', sourceMode: 'Toggle Markdown Source', hideBlankLines: 'Hide Blank Lines',
-        panelSide: 'File List Position', panelSideLeft: 'On the Left', panelSideRight: 'On the Right',
+        sourceMode: 'Toggle Markdown Source', hideBlankLines: 'Hide Blank Lines',
         pageWidth: 'Text Width', pageWidthNarrow: 'Narrow', pageWidthStandard: 'Standard', pageWidthWide: 'Wide',
         light: 'Light', dark: 'Dark', elegant: 'Elegant',
         sepia: 'Sepia', notion: 'Notion', bear: 'Bear', writer: 'Writer',
@@ -1825,6 +1845,35 @@ function buildMenu(): void {
         hide: 'Hide ColaMD', hideOthers: 'Hide Others', showAll: 'Show All', quit: 'Quit ColaMD',
         minimize: 'Minimize', zoom: 'Zoom', front: 'Bring All to Front',
       }
+
+  const sidebarText = sidebarLabels[preferredCheatsheetLanguage]
+  const sidebarMenus: Electron.MenuItemConstructorOptions[] = (['left', 'right'] as const).map((side) => ({
+    label: side === 'left' ? sidebarText.leftSidebar : sidebarText.rightSidebar,
+    submenu: [
+      {
+        id: `sidebar-${side}-visible`,
+        label: sidebarText.showSidebar,
+        type: 'checkbox',
+        checked: currentSidebars[side].visible,
+        accelerator: side === 'left' ? 'CmdOrCtrl+\\' : 'CmdOrCtrl+Shift+\\',
+        click: (_item, win) => {
+          const target = win instanceof BrowserWindow ? win : sidebarTargetWindow()
+          target?.webContents.send('toggle-sidebar', side)
+        }
+      },
+      { type: 'separator' },
+      ...(['files', 'outline'] as const).map((content): Electron.MenuItemConstructorOptions => ({
+        id: `sidebar-${side}-${content}`,
+        label: sidebarText[content],
+        type: 'radio',
+        checked: currentSidebars[side].content === content,
+        click: (_item, win) => {
+          const target = win instanceof BrowserWindow ? win : sidebarTargetWindow()
+          target?.webContents.send('set-sidebar-content', side, content)
+        }
+      }))
+    ]
+  }))
 
   const themeIdByLabel = new Map<string, string>([
     [labels.light, 'light'],
@@ -2010,21 +2059,7 @@ function buildMenu(): void {
         { label: labels.zoomIn, accelerator: 'CmdOrCtrl+Plus', click: () => sendToFocused('step-font', 1) },
         { label: labels.zoomOut, accelerator: 'CmdOrCtrl+-', click: () => sendToFocused('step-font', -1) },
         { type: 'separator' },
-        {
-          label: labels.filePanel,
-          accelerator: 'CmdOrCtrl+\\',
-          click: () => sendToFocused('toggle-file-panel')
-        },
-        {
-          // Which side the panel sits on is the renderer's preference, next to
-          // the panel's own width; this menu only asks for the change and shows
-          // the answer (the renderer reports back, like the theme does).
-          label: labels.panelSide,
-          submenu: [
-            { id: 'panel-side-right', label: labels.panelSideRight, type: 'checkbox' as const, checked: currentPanelSide === 'right', click: () => sendToFocused('set-panel-side', 'right') },
-            { id: 'panel-side-left', label: labels.panelSideLeft, type: 'checkbox' as const, checked: currentPanelSide === 'left', click: () => sendToFocused('set-panel-side', 'left') }
-          ]
-        },
+        ...sidebarMenus,
         {
           label: labels.sourceMode,
           accelerator: 'CmdOrCtrl+/',
@@ -2113,6 +2148,7 @@ function buildMenu(): void {
 
   const menu = Menu.buildFromTemplate(template)
   Menu.setApplicationMenu(menu)
+  updateSidebarMenuChecks()
   localizeWindowMenu(menu, labels)
   themeMenuItems = [
     ...themeSubmenu.filter((item): item is Electron.MenuItemConstructorOptions & { id: string } => typeof item.id === 'string')
@@ -2151,12 +2187,41 @@ function updateThemeMenuChecks(): void {
   }
 }
 
-function updatePanelSideMenuChecks(): void {
+// 侧栏菜单优先操作实际聚焦窗口，无焦点时沿用最近创建或聚焦的窗口。
+function sidebarTargetWindow(): BrowserWindow | null {
+  const focused = BrowserWindow.getFocusedWindow()
+  if (focused && !focused.isDestroyed()) return focused
+  const windows = Array.from(sidebarWindowOrder)
+  return windows[windows.length - 1] ?? null
+}
+
+// 窗口切换或关闭后先恢复缓存，再请求渲染层确认当前状态。
+function syncSidebarMenu(win: BrowserWindow | null): void {
+  const preferences = win && sidebarPreferencesByWindow.get(win)
+  if (preferences) currentSidebars = preferences
+  updateSidebarMenuChecks()
+  win?.webContents.send('request-sidebar-state')
+}
+
+// 就地更新勾选，不重建应用菜单，避免打断菜单触发路径和输入法。
+function updateSidebarMenuChecks(): void {
   const menu = Menu.getApplicationMenu()
   if (!menu) return
+  const enabled = sidebarTargetWindow() !== null
   for (const side of ['left', 'right'] as const) {
-    const item = menu.getMenuItemById(`panel-side-${side}`)
-    if (item) item.checked = side === currentPanelSide
+    const visible = menu.getMenuItemById(`sidebar-${side}-visible`)
+    if (visible) {
+      visible.checked = currentSidebars[side].visible
+      visible.enabled = enabled
+    }
+    for (const content of ['files', 'outline'] as const) {
+      const item = menu.getMenuItemById(`sidebar-${side}-${content}`)
+      if (item) {
+        // Electron 的 radio setter 会选中该项，传 false 也会改写组内状态。
+        if (currentSidebars[side].content === content) item.checked = true
+        item.enabled = enabled
+      }
+    }
   }
 }
 

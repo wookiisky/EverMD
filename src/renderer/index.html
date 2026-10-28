@@ -19,11 +19,9 @@
     body.platform-win #titlebar { padding-right: calc(100vw - env(titlebar-area-width, calc(100vw - 138px)) + 6px); }
     #titlebar > button { flex: none; position: relative; margin-left: 8px; -webkit-app-region: no-drag; border: 0; background: transparent; color: inherit; display: flex; align-items: center; justify-content: center; }
     #titlebar > button[hidden] { display: none; }
-    #word-count, #source-toggle-btn, #file-toggle-btn, #app-menu-btn { width: 28px; height: 28px; }
+    #word-count, #source-toggle-btn, #left-sidebar-toggle, #right-sidebar-toggle, #app-menu-btn { width: 28px; height: 28px; }
     #save-status { flex: none; margin-right: 2px; white-space: nowrap; font-size: 11px; line-height: 1.3; opacity: 0; pointer-events: none; }
     .toolbar-tip { position: absolute; opacity: 0; pointer-events: none; }
-    #file-panel { width: var(--file-panel-width, 220px); }
-    #panel-resizer { position: fixed; top: calc(36px + var(--tab-bar-height, 0px)); bottom: 0; right: calc(var(--file-panel-width, 220px) - 4px); width: 7px; cursor: col-resize; z-index: 6; background: transparent; }
     #source-editor { display: none; }
   </style>
 </head>
@@ -44,12 +42,19 @@
     </button>
     <div id="tab-bar" hidden></div>
     <span id="save-status" aria-live="polite"></span>
-    <button id="file-toggle-btn" aria-label="显示 / 隐藏文件列表 (⌘\)">
-      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round">
+    <button id="left-sidebar-toggle" aria-controls="left-sidebar" aria-expanded="false">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <rect x="1.5" y="2.5" width="13" height="11" rx="1.5"/>
+        <line x1="5.3" y1="3" x2="5.3" y2="13"/>
+      </svg>
+      <span class="toolbar-tip"></span>
+    </button>
+    <button id="right-sidebar-toggle" aria-controls="right-sidebar" aria-expanded="false">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
         <rect x="1.5" y="2.5" width="13" height="11" rx="1.5"/>
         <line x1="10.7" y1="3" x2="10.7" y2="13"/>
       </svg>
-      <span class="toolbar-tip">显示 / 隐藏文件列表 (⌘\)</span>
+      <span class="toolbar-tip"></span>
     </button>
     <button id="source-toggle-btn" aria-label="切换 Markdown 源码 / 所见即所得">
       <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round">
@@ -68,18 +73,19 @@
     </button>
   </div>
   <div id="hover-tip" hidden></div>
-  <aside id="file-panel" hidden>
-    <div class="file-panel-tabs" role="tablist" aria-label="侧栏内容">
-      <button id="file-panel-files" class="active" type="button" role="tab" aria-selected="true">文件</button>
-      <button id="file-panel-outline" type="button" role="tab" aria-selected="false">大纲</button>
-    </div>
-    <ul id="file-list"></ul>
-    <ul id="outline-list" hidden></ul>
+  <aside id="left-sidebar" class="sidebar" hidden>
+    <div class="sidebar-heading"></div>
+    <ul class="file-list"></ul>
+    <ul class="outline-list" hidden></ul>
   </aside>
-  <div id="panel-resizer" aria-hidden="true"></div>
-  <!-- The editor region is the visible document area. The file panel sits beside
-       it, so this region shrinks (and, on the left, moves) without changing the
-       editor's internal reading-column layout. -->
+  <div id="left-sidebar-resizer" class="sidebar-resizer" aria-hidden="true"></div>
+  <aside id="right-sidebar" class="sidebar" hidden>
+    <div class="sidebar-heading"></div>
+    <ul class="file-list" hidden></ul>
+    <ul class="outline-list"></ul>
+  </aside>
+  <div id="right-sidebar-resizer" class="sidebar-resizer" aria-hidden="true"></div>
+  <!-- 正文在左右侧栏剩余的同一区域里排版，源码与渲染模式共用边界。 -->
   <div id="editor-region">
     <div id="editor"></div>
     <textarea id="source-editor" spellcheck="false"></textarea>

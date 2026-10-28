@@ -1,4 +1,5 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron'
+import type { SidebarContent, SidebarPreferences, SidebarSide } from '../shared/sidebar-config'
 
 export interface SiblingFile {
   name: string
@@ -71,8 +72,11 @@ export interface ElectronAPI {
   onMenuPlaySlideshow: (callback: () => void) => void
   setSlideshowFullscreen: (on: boolean) => Promise<boolean>
   onSetTheme: (callback: (theme: string) => void) => void
-  onSetPanelSide: (callback: (side: string) => void) => void
-  reportPanelSide: (side: string) => Promise<void>
+  /** 左右侧栏独立开关和选择内容，渲染层持久化偏好。 */
+  onToggleSidebar: (callback: (side: SidebarSide) => void) => void
+  onSetSidebarContent: (callback: (side: SidebarSide, content: SidebarContent) => void) => void
+  reportSidebars: (preferences: SidebarPreferences) => Promise<void>
+  onRequestSidebarState: (callback: () => void) => void
   onSetPageWidth: (callback: (width: string) => void) => void
   reportPageWidth: (width: string) => Promise<void>
   onSetCustomCSS: (callback: (css: string) => void) => void
@@ -81,7 +85,6 @@ export interface ElectronAPI {
   onFormatCommand: (callback: (id: string) => void) => void
   readClipboardText: () => Promise<string>
   onSiblingsChanged: (callback: (files: SiblingFile[]) => void) => void
-  onToggleFilePanel: (callback: () => void) => void
   onToggleSourceMode: (callback: () => void) => void
   /** 隐藏空行仅改变渲染显示，偏好由渲染层持久化。 */
   onSetHideBlankLines: (callback: (enabled: boolean) => void) => void
@@ -146,7 +149,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   loadCustomTheme: () => ipcRenderer.invoke('load-custom-theme'),
   loadThemeCSS: (fileName: string) => ipcRenderer.invoke('load-theme-css', fileName),
   reportTheme: (theme: string) => ipcRenderer.invoke('report-theme', theme),
-  reportPanelSide: (side: string) => ipcRenderer.invoke('report-panel-side', side),
+  reportSidebars: (preferences: SidebarPreferences) => ipcRenderer.invoke('report-sidebars', preferences),
   reportPageWidth: (width: string) => ipcRenderer.invoke('report-page-width', width),
   reportTitlebarColors: (colors: { background: string; symbol: string }) => ipcRenderer.invoke('report-titlebar-colors', colors),
   popupAppMenu: () => ipcRenderer.invoke('popup-app-menu'),
@@ -204,8 +207,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onSetTheme: (callback: (theme: string) => void) => {
     ipcRenderer.on('set-theme', (_event, theme) => callback(theme))
   },
-  onSetPanelSide: (callback: (side: string) => void) => {
-    ipcRenderer.on('set-panel-side', (_event, side) => callback(side))
+  onToggleSidebar: (callback: (side: SidebarSide) => void) => {
+    ipcRenderer.on('toggle-sidebar', (_event, side: SidebarSide) => callback(side))
+  },
+  onSetSidebarContent: (callback: (side: SidebarSide, content: SidebarContent) => void) => {
+    ipcRenderer.on('set-sidebar-content', (_event, side: SidebarSide, content: SidebarContent) => callback(side, content))
+  },
+  onRequestSidebarState: (callback: () => void) => {
+    ipcRenderer.on('request-sidebar-state', () => callback())
   },
   onSetPageWidth: (callback: (width: string) => void) => {
     ipcRenderer.on('set-page-width', (_event, width) => callback(width))
@@ -225,9 +234,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
   readClipboardText: () => ipcRenderer.invoke('read-clipboard-text') as Promise<string>,
   onSiblingsChanged: (callback: (files: SiblingFile[]) => void) => {
     ipcRenderer.on('siblings-changed', (_event, files) => callback(files))
-  },
-  onToggleFilePanel: (callback: () => void) => {
-    ipcRenderer.on('toggle-file-panel', () => callback())
   },
   onToggleSourceMode: (callback: () => void) => {
     ipcRenderer.on('toggle-source-mode', () => callback())
