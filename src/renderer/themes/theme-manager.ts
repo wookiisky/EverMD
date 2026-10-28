@@ -15,6 +15,23 @@ const themes: Record<string, string> = {
 
 let customStyleEl: HTMLStyleElement | null = null
 
+// 用浏览器解析后的类型区分倍率和长度，calc、变量、相对单位遵循同一套 CSS 语义。
+function shareThemeLineHeight(rules: CSSRuleList, probe: HTMLElement): void {
+  for (const rule of Array.from(rules)) {
+    if (rule instanceof CSSStyleRule) {
+      const value = rule.style.getPropertyValue('line-height')
+      if (value && !value.includes('--md-body-line-height')) {
+        probe.style.setProperty('line-height', value, 'important')
+        const parsed = probe.computedStyleMap().get('line-height')
+        const inherited = parsed instanceof CSSUnitValue && parsed.unit === 'number' ? value : '1lh'
+        rule.style.setProperty('--md-body-line-height', inherited,
+          rule.style.getPropertyPriority('line-height'))
+      }
+    }
+    if (rule instanceof CSSGroupingRule) shareThemeLineHeight(rule.cssRules, probe)
+  }
+}
+
 export function applyTheme(name: string, customCSS?: string): void {
   const body = document.body
 
@@ -29,12 +46,32 @@ export function applyTheme(name: string, customCSS?: string): void {
   }
 
   if (customCSS || name.startsWith('custom:')) {
+    body.classList.add('theme-custom')
     if (customCSS) {
       customStyleEl = document.createElement('style')
       customStyleEl.textContent = customCSS
       document.head.appendChild(customStyleEl)
+      // 复用真实祖先的变量作用域；初次应用时编辑器尚未创建，临时搭出相同的层次。
+      const content = document.querySelector<HTMLElement>('#editor .cm-content')
+      const context = document.createElement('div')
+      context.className = 'cm-editor'
+      context.style.cssText = 'position: absolute; visibility: hidden; pointer-events: none;'
+      const scroller = document.createElement('div')
+      scroller.className = 'cm-scroller'
+      context.appendChild(scroller)
+      const probe = document.createElement('div')
+      probe.className = content?.className ?? 'cm-content'
+      probe.style.cssText = 'position: absolute; visibility: hidden; pointer-events: none;'
+      if (!content) (document.getElementById('editor') ?? body).appendChild(context)
+      const parent = content?.parentElement ?? scroller
+      parent.appendChild(probe)
+      try {
+        if (customStyleEl.sheet) shareThemeLineHeight(customStyleEl.sheet.cssRules, probe)
+      } finally {
+        probe.remove()
+        context.remove()
+      }
     }
-    body.classList.add('theme-custom')
   } else if (themes[name]) {
     body.classList.add(themes[name])
   }

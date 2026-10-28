@@ -42,7 +42,12 @@
 .colamd-document h2:first-child { margin-top: 0; }
 
 .colamd-document p {
+  --md-paragraph-scale: 0.9;
   margin: 0.75em 0;
+  /* 与编辑器的段内收紧比例一致，段落外边距保持原值。 */
+  line-height: calc(1lh * 1.6 / 1.75 * var(--md-paragraph-scale));
+  padding-top: calc(1lh * (1 / var(--md-paragraph-scale) - 1) / 2);
+  padding-bottom: calc(1lh * (1 / var(--md-paragraph-scale) - 1) / 2);
 }
 
 .colamd-document a {
@@ -71,6 +76,7 @@
   background: var(--code-bg);
   font-family: var(--font-mono, Menlo, Monaco, monospace);
   font-size: 0.875em;
+  line-height: normal;
 }
 
 .colamd-document pre {
@@ -97,6 +103,7 @@
 }
 
 .colamd-document blockquote p {
+  --md-paragraph-scale: 0.81;
   margin: 0.4em 0;
 }
 
@@ -124,7 +131,11 @@
 
 .colamd-document th,
 .colamd-document td {
+  --md-table-scale: 0.81;
   padding: 8px 12px;
+  line-height: calc(1lh * var(--md-table-scale));
+  padding-top: calc(8px + 1lh * (1 / var(--md-table-scale) - 1) / 2);
+  padding-bottom: calc(8px + 1lh * (1 / var(--md-table-scale) - 1) / 2);
   border: 1px solid var(--border-color);
 }
 

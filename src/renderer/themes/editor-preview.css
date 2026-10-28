@@ -40,9 +40,10 @@
  * 正文就会左对齐（实测窗口 1623px、正文 640px 贴左边）。一个 id 就能压过它，
  * 而应用和导出都把编辑器包在 `#editor` 里。 */
 .cm-content {
+  --md-body-line-height: 1.75;
   font-family: var(--font-body, inherit);
   font-size: var(--editor-font-size, 16px);
-  line-height: 1.75;
+  line-height: var(--md-body-line-height);
   color: var(--text-color);
 }
 
@@ -67,6 +68,25 @@
 .cm-content .cm-line {
   padding: 0;
   box-sizing: border-box;
+}
+
+/* 段内换行比段落分隔紧凑；lh 在 line-height 中取父容器行高，跟随内置及自定义主题。 */
+.cm-content .cm-md-paragraph {
+  --md-paragraph-scale: 0.9;
+  line-height: calc(1lh * 1.6 / 1.75 * var(--md-paragraph-scale));
+}
+
+/* 引用累计两次收紧 10%；首尾补偿与同一比例联动，保留段落间的文字距离。 */
+.cm-content .cm-md-blockquote.cm-md-paragraph {
+  --md-paragraph-scale: 0.81;
+}
+
+.cm-content .cm-md-paragraph-first {
+  padding-top: calc(1lh * (1 / var(--md-paragraph-scale) - 1) / 2);
+}
+
+.cm-content .cm-md-paragraph-last {
+  padding-bottom: calc(1lh * (1 / var(--md-paragraph-scale) - 1) / 2);
 }
 
 /* 仅压缩视图中的空行，行号、选区和文件里的换行都保持原样。 */
@@ -153,6 +173,8 @@
   padding: 2px 6px;
   font-size: 0.875em;
   font-family: var(--font-mono);
+  /* 小字号代码使用自己的字体行盒，避免继承正文的绝对行高后撑开整行。 */
+  line-height: normal;
 }
 
 /* 链接地址压暗，让正文里的链接文字更突出。 */
@@ -324,14 +346,23 @@
 
 .cm-content .cm-md-table-widget th,
 .cm-content .cm-md-table-widget td {
+  --md-table-scale: 0.81;
   border: 1px solid var(--border-color);
   padding: 8px 12px;
+  /* 复用主题原有的行高倍率，让单元格字号自然参与计算；补偿只保留首尾留白。 */
+  line-height: calc(var(--md-body-line-height) * var(--md-table-scale));
+  padding-top: calc(8px + 1lh * (1 / var(--md-table-scale) - 1) / 2);
+  padding-bottom: calc(8px + 1lh * (1 / var(--md-table-scale) - 1) / 2);
   text-align: left;
 }
 
 .cm-content .cm-md-table-widget th {
   background: var(--table-header-bg);
   font-weight: 600;
+}
+
+.cm-content .cm-md-table-widget code {
+  line-height: normal;
 }
 
 /* ======= 分隔线 ======= */
@@ -610,18 +641,18 @@ body.exporting .cm-content .cm-md-frontmatter {
 /* 正文字体与行高 */
 body.theme-elegant .cm-content {
   font-family: 'LXGW WenKai', 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', Georgia, serif;
-  line-height: 1.9;
+  --md-body-line-height: 1.9;
 }
 
 body.theme-sepia .cm-content {
   font-family: Georgia, 'Source Han Serif SC', 'Noto Serif SC', 'Songti SC', serif;
-  line-height: 1.85;
+  --md-body-line-height: 1.85;
 }
 
 body.theme-writer .cm-content {
   font-family: 'SF Mono', 'JetBrains Mono', 'Fira Code', Menlo, Consolas, 'PingFang SC', 'Noto Sans SC', monospace;
   font-size: 15px;
-  line-height: 1.8;
+  --md-body-line-height: 1.8;
 }
 
 /* 加粗的颜色 */

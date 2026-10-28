@@ -1068,6 +1068,16 @@ function collectImages(state: EditorState, ranges: DecorationRange[], front: Ran
 function collectBlocks(state: EditorState, ranges: DecorationRange[], front: Range | null): void {
   iterateContent(state, front, (node) => {
     switch (node.name) {
+      case 'Paragraph': {
+        // 直接复用语法段落边界，引用与列表续行也适用；空行、标题和代码保持各自排版。
+        pushBlockLines(state, node.from, node.to, 'cm-md-paragraph', ranges)
+        // 首尾留白补回收紧行高少掉的半行距，让相邻段落的文字间距保持不变。
+        const first = state.doc.lineAt(node.from).from
+        const last = state.doc.lineAt(Math.max(node.from, node.to - 1)).from
+        ranges.push({ from: first, to: first, deco: BLOCK('cm-md-paragraph-first') })
+        ranges.push({ from: last, to: last, deco: BLOCK('cm-md-paragraph-last') })
+        break
+      }
       case 'Blockquote': {
         pushBlockLines(state, node.from, node.to, 'cm-md-blockquote', ranges)
         break
