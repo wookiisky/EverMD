@@ -742,6 +742,7 @@ export function jumpToLine(line: number): void {
   const target = view.state.doc.line(line + 1)
   view.dispatch({
     selection: { anchor: target.from },
+    userEvent: 'select.jump',
     effects: EditorView.scrollIntoView(target.from, { y: 'start', yMargin: 24 }),
     scrollIntoView: false,
   })

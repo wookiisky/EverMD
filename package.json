@@ -35,7 +35,10 @@
     "verify:export-pdf": "node scripts/verify-export-pdf.mjs",
     "verify:themes": "node scripts/verify-themes.mjs",
     "verify:sidebar-preferences": "node scripts/verify-sidebar-preferences.mjs",
-    "verify:sidebars": "node scripts/verify-sidebars.mjs"
+    "verify:sidebars": "node scripts/verify-sidebars.mjs",
+    "verify:navigation-history": "node scripts/verify-navigation-history.mjs",
+    "verify:navigation-ui": "node scripts/verify-navigation-ui.mjs",
+    "verify:editor-navigation": "node scripts/verify-editor-navigation.mjs"
   },
   "dependencies": {
     "@codemirror/commands": "^6.11.1",

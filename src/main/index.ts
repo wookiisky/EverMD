@@ -8,6 +8,8 @@ import { watch, FSWatcher, existsSync, readdirSync, readFileSync, writeFileSync,
 import { resolveMarkdownLink } from './markdown-link'
 import type { SidebarPreferences } from '../shared/sidebar-config'
 import sidebarLabels from '../shared/sidebar-labels.json'
+import type { NavigationFileResult, NavigationMenuState } from '../shared/navigation-config'
+import navigationLabels from '../shared/navigation-labels.json'
 
 const startupStartedAt = performance.now()
 const startupTraceEnabled = process.env.COLAMD_STARTUP_TRACE === '1'
@@ -254,7 +256,8 @@ interface WindowState {
   // mtime of the file as of our last read or write. An autosave refuses to
   // write when the file on disk is newer, so an edit that landed while the
   // save was queued is never silently overwritten.
-  lastKnownMtime: number
+  // null 表示已确认文件缺失，0 表示没有可用的修改时间基线。
+  lastKnownMtime: number | null
   // Content of our last internal write/load. Delayed FSEvents echoes of our
   // own writes are skipped when the disk still holds exactly this content.
   lastInternalSaveContent: string | null
@@ -324,7 +327,9 @@ function fileMtimeMs(filePath: string): number {
 // an external edit this window has not seen yet. A 1ms tolerance absorbs
 // filesystem timestamp rounding.
 function fileChangedExternally(filePath: string, state: WindowState): boolean {
-  if (!state.lastKnownMtime || filePath !== state.filePath) return false
+  if (filePath !== state.filePath) return false
+  if (state.lastKnownMtime === null) return existsSync(filePath)
+  if (!state.lastKnownMtime) return false
   const diskMtime = fileMtimeMs(filePath)
   if (!diskMtime) return false
   return diskMtime > state.lastKnownMtime + 1
@@ -335,7 +340,13 @@ function fileChangedExternally(filePath: string, state: WindowState): boolean {
 function notifyExternalChange(win: BrowserWindow, filePath: string): void {
   void readFile(filePath, 'utf-8')
     .then((data) => {
-      if (!win.isDestroyed()) win.webContents.send('file-changed', data)
+      if (win.isDestroyed()) return
+      const state = getState(win)
+      if (state.filePath !== filePath) return
+      // 与监听器读到外部版本时一致：本次版本已交给渲染层加载或确认冲突。
+      // 结束“确认缺失”的基线，避免选择加载/保留后每次自动保存都再次冲突。
+      if (state.lastKnownMtime === null) state.lastKnownMtime = fileMtimeMs(filePath)
+      win.webContents.send('file-changed', data)
     })
     .catch(() => { /* the watcher picks it up on the next event */ })
 }
@@ -389,6 +400,7 @@ function createWindow(
     sidebarWindowOrder.delete(win)
     sidebarWindowOrder.add(win)
     syncSidebarMenu(win)
+    updateNavigationMenu()
   })
 
   // The renderer owns the shell's layout, so it needs to know when the window
@@ -480,6 +492,7 @@ function createWindow(
     sidebarWindowOrder.delete(win)
     // 离屏或不可聚焦窗口关闭后不一定触发其他窗口的 focus。
     syncSidebarMenu(sidebarTargetWindow())
+    updateNavigationMenu()
   })
 
   updateTitle(win)
@@ -1025,13 +1038,11 @@ ipcMain.handle('open-file-path', async (event, filePath: string) => {
 // was in the background. Passing null (or an empty string) means the active
 // document is untitled, which must clear the window's file binding: otherwise a
 // save of that untitled document would be written into the previous file.
-ipcMain.handle('activate-file', async (event, filePath: unknown) => {
-  const win = getWinFromEvent(event)
-  if (!win) return null
-  if (filePath !== null && filePath !== '' && typeof filePath !== 'string') return null
-  const target = typeof filePath === 'string' && filePath.length > 0 ? filePath : null
+/** 保存队列内读取目标；已有标签允许文件缺失时只恢复绑定，不替换正文。 */
+function activateWindowFile(win: BrowserWindow, target: string | null, allowMissing = false): Promise<NavigationFileResult | null> {
   const state = getState(win)
-  const operation = async (): Promise<{ content: string; fileUrl: string; mtime: number } | null> => {
+  const operation = async (): Promise<NavigationFileResult | null> => {
+    if (win.isDestroyed()) return { status: 'error' }
     if (!target) {
       stopWatching(state)
       state.filePath = null
@@ -1042,7 +1053,7 @@ ipcMain.handle('activate-file', async (event, filePath: unknown) => {
     }
     try {
       const data = await readFile(target, 'utf-8')
-      if (win.isDestroyed()) return null
+      if (win.isDestroyed()) return { status: 'error' }
       state.filePath = target
       state.browsePath = dirname(target)
       state.lastInternalSaveContent = data
@@ -1050,14 +1061,48 @@ ipcMain.handle('activate-file', async (event, filePath: unknown) => {
       watchFile(win, state)
       updateTitle(win)
       pushRecentFile(target, true)
-      return { content: data, fileUrl: pathToFileURL(target).href, mtime: state.lastKnownMtime }
-    } catch {
-      return null
+      return { status: 'ok', path: target, content: data, fileUrl: pathToFileURL(target).href, mtime: state.lastKnownMtime }
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code
+      const missing = code === 'ENOENT' || code === 'ENOTDIR'
+      // 只有已打开标签有可恢复的内存副本；新打开与权限错误仍须保留原文件。
+      if (missing && allowMissing && state.tabFiles.includes(target) && !win.isDestroyed()) {
+        state.filePath = target
+        state.browsePath = dirname(target)
+        state.lastInternalSaveContent = null
+        state.lastKnownMtime = null
+        watchFile(win, state)
+        updateTitle(win)
+        return { status: 'cached', path: target, fileUrl: pathToFileURL(target).href }
+      }
+      return { status: missing ? 'missing' : 'error' }
     }
   }
   const next = state.writeQueue.then(operation, operation)
   state.writeQueue = next.then(() => undefined, () => undefined)
   return next
+}
+
+ipcMain.handle('activate-file', async (event, filePath: unknown) => {
+  const win = getWinFromEvent(event)
+  if (!win) return null
+  if (filePath !== null && filePath !== '' && typeof filePath !== 'string') return null
+  const target = typeof filePath === 'string' && filePath.length > 0 ? filePath : null
+  const result = await activateWindowFile(win, target)
+  return result?.status === 'ok' ? result : null
+})
+
+ipcMain.handle('navigate-to-file', async (event, filePath: unknown, allowMissing: unknown = false): Promise<NavigationFileResult> => {
+  const win = getWinFromEvent(event)
+  if (!win || typeof filePath !== 'string' || !filePath) return { status: 'error' }
+  const result = await activateWindowFile(win, filePath, allowMissing === true) ?? { status: 'error' as const }
+  if (result.status === 'error' && !win.isDestroyed()) {
+    const text = navigationLabels[getPreferredCheatsheetLanguage()]
+    await dialog.showMessageBox(win, {
+      type: 'error', message: text.openError, detail: filePath, buttons: [text.ok]
+    })
+  }
+  return result
 })
 
 // Same-directory file panel: list markdown files next to the open file
@@ -1496,6 +1541,8 @@ let currentSidebars: SidebarPreferences = {
   right: { content: 'outline', visible: false, width: 220 }
 }
 const sidebarPreferencesByWindow = new WeakMap<BrowserWindow, SidebarPreferences>()
+/** 历史属于各个窗口，后台上报只刷新对应窗口的缓存。 */
+const navigationStateByWindow = new WeakMap<BrowserWindow, NavigationMenuState>()
 // 显式记录创建与聚焦顺序，不依赖 getAllWindows() 的枚举次序。
 const sidebarWindowOrder = new Set<BrowserWindow>()
 let currentPageWidth: 'narrow' | 'standard' | 'wide' = 'standard'
@@ -1644,6 +1691,13 @@ ipcMain.handle('report-sidebars', (event, preferences: SidebarPreferences) => {
   if (win !== sidebarTargetWindow()) return
   currentSidebars = preferences
   updateSidebarMenuChecks()
+})
+
+ipcMain.handle('report-navigation-state', (event, navigation: NavigationMenuState) => {
+  const win = getWinFromEvent(event)
+  if (!win) return
+  navigationStateByWindow.set(win, navigation)
+  if (win === sidebarTargetWindow()) updateNavigationMenu()
 })
 
 ipcMain.handle('report-page-width', (_event, width: unknown) => {
@@ -1847,6 +1901,7 @@ function buildMenu(): void {
       }
 
   const sidebarText = sidebarLabels[preferredCheatsheetLanguage]
+  const navigationText = navigationLabels[preferredCheatsheetLanguage]
   const sidebarMenus: Electron.MenuItemConstructorOptions[] = (['left', 'right'] as const).map((side) => ({
     label: side === 'left' ? sidebarText.leftSidebar : sidebarText.rightSidebar,
     submenu: [
@@ -2053,6 +2108,23 @@ function buildMenu(): void {
     {
       label: labels.view,
       submenu: [
+        {
+          id: 'navigation-back', label: navigationText.back, enabled: false,
+          accelerator: isMac ? 'Cmd+Alt+Left' : 'Alt+Left',
+          click: (_item, win) => {
+            const target = win instanceof BrowserWindow ? win : sidebarTargetWindow()
+            target?.webContents.send('navigate-history', -1)
+          }
+        },
+        {
+          id: 'navigation-forward', label: navigationText.forward, enabled: false,
+          accelerator: isMac ? 'Cmd+Alt+Right' : 'Alt+Right',
+          click: (_item, win) => {
+            const target = win instanceof BrowserWindow ? win : sidebarTargetWindow()
+            target?.webContents.send('navigate-history', 1)
+          }
+        },
+        { type: 'separator' },
         // 整页缩放会把顶栏连同 macOS 的红绿灯一起弄歪（红绿灯是系统画的，尺寸不跟）。
         // 所以这三项调的是正文字号，界面尺寸不动（2026-10-06）。
         { label: labels.actualSize, accelerator: 'CmdOrCtrl+0', click: () => sendToFocused('step-font', 0) },
@@ -2149,6 +2221,7 @@ function buildMenu(): void {
   const menu = Menu.buildFromTemplate(template)
   Menu.setApplicationMenu(menu)
   updateSidebarMenuChecks()
+  updateNavigationMenu()
   localizeWindowMenu(menu, labels)
   themeMenuItems = [
     ...themeSubmenu.filter((item): item is Electron.MenuItemConstructorOptions & { id: string } => typeof item.id === 'string')
@@ -2201,6 +2274,17 @@ function syncSidebarMenu(win: BrowserWindow | null): void {
   if (preferences) currentSidebars = preferences
   updateSidebarMenuChecks()
   win?.webContents.send('request-sidebar-state')
+}
+
+/** 就地更新当前窗口的导航菜单，未上报历史的窗口保持禁用。 */
+function updateNavigationMenu(): void {
+  const menu = Menu.getApplicationMenu()
+  const win = sidebarTargetWindow()
+  const navigation = win && navigationStateByWindow.get(win)
+  const back = menu?.getMenuItemById('navigation-back')
+  const forward = menu?.getMenuItemById('navigation-forward')
+  if (back) back.enabled = navigation?.canGoBack ?? false
+  if (forward) forward.enabled = navigation?.canGoForward ?? false
 }
 
 // 就地更新勾选，不重建应用菜单，避免打断菜单触发路径和输入法。

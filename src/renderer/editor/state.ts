@@ -56,6 +56,8 @@ export { markdownParser }
 export function stateExtensions(): Extension {
   return [
     history(),
+    // 文件切换等待保存/读取时，原生命令与自定义事务都不得继续改写旧文档。
+    EditorState.changeFilter.of(transaction => !transaction.startState.readOnly),
     indentOnInput(),
     bracketMatching(),
     // 不挂 highlightSelectionMatches()（#144）：选中一个字，全文同字都被框，

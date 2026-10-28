@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron'
 import type { SidebarContent, SidebarPreferences, SidebarSide } from '../shared/sidebar-config'
+import type { NavigationFileResult, NavigationMenuState } from '../shared/navigation-config'
 
 export interface SiblingFile {
   name: string
@@ -37,6 +38,12 @@ export interface ElectronAPI {
   listDirectory: (path: string) => Promise<SiblingFile[] | null>
   openSibling: (path: string) => Promise<boolean>
   activateFile: (path: string | null) => Promise<{ content: string; fileUrl: string; mtime: number } | null>
+  /** 读取后切换文件绑定；已有标签可在磁盘缺失时恢复内存内容。 */
+  navigateToFile: (path: string, allowMissing?: boolean) => Promise<NavigationFileResult>
+  /** 原生菜单请求在当前窗口的导航历史中前进或后退。 */
+  onNavigateHistory: (callback: (direction: -1 | 1) => void) => void
+  /** 同步当前窗口的前进后退菜单状态。 */
+  reportNavigationState: (state: NavigationMenuState) => Promise<void>
   setTabFiles: (paths: string[]) => void
   fileUrl: (path: string) => Promise<string | null>
   onFocusFile: (callback: (path: string) => void) => void
@@ -126,6 +133,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
   listDirectory: (path: string) => ipcRenderer.invoke('list-directory', path),
   openSibling: (path: string) => ipcRenderer.invoke('open-sibling', path),
   activateFile: (path: string | null) => ipcRenderer.invoke('activate-file', path) as Promise<{ content: string; fileUrl: string; mtime: number } | null>,
+  navigateToFile: (path: string, allowMissing = false) => ipcRenderer.invoke('navigate-to-file', path, allowMissing) as Promise<NavigationFileResult>,
+  onNavigateHistory: (callback: (direction: -1 | 1) => void) => {
+    ipcRenderer.on('navigate-history', (_event, direction: -1 | 1) => callback(direction))
+  },
+  reportNavigationState: (state: NavigationMenuState) => ipcRenderer.invoke('report-navigation-state', state),
   setTabFiles: (paths: string[]) => { ipcRenderer.send('set-tab-files', paths) },
   fileUrl: (path: string) => ipcRenderer.invoke('file-url', path) as Promise<string | null>,
   onFocusFile: (callback: (path: string) => void) => {

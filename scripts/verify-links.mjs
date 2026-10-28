@@ -70,14 +70,16 @@ async function unitChecks() {
   })
   // Exercise the real tab opener with a failed save, not a copy of its logic.
   const code = readFileSync(join(ROOT, 'src/renderer/main.ts'), 'utf8')
-  const start = code.indexOf('async function openFileInNewTab(')
-  const end = code.indexOf('\n// Closing several tabs', start)
+  const start = code.indexOf('async function openFileInNewTabNow(')
+  const end = code.indexOf('\n// 文件列表与历史重开', start)
+  assert(start >= 0 && end > start, '未找到实际文件打开函数，测试入口需要同步')
   const { code: compiled } = await transform(code.slice(start, end), { loader: 'ts' })
   const current = { filePath: source, dirty: true }
   let opens = 0
-  const context = { tabs: [current], activeTab: () => current, openNewTab: async () => {}, window: { electronAPI: { openSibling: async () => { opens++ } } } }
+  const context = { tabs: [current], activeTab: () => current, captureActiveTab: () => {},
+    saveTabForLeaving: async () => false, window: { electronAPI: { navigateToFile: async () => { opens++ } } } }
   vm.runInNewContext(compiled, context)
-  await context.openFileInNewTab(join(WORK, 'other.md'))
+  await context.openFileInNewTabNow(join(WORK, 'other.md'))
   check('failed save preserves current tab', () => { assert.equal(current.filePath, source); assert.equal(opens, 0) })
 
   // Verify tableCellStart (supports indented & unbordered tables, #153)

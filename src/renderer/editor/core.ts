@@ -10,7 +10,7 @@
 // 验收脚本直接消费那一半，所以保真的证明不需要真实浏览器。
 
 import { EditorState, RangeSet } from '@codemirror/state'
-import { EditorView, drawSelection, dropCursor, highlightSpecialChars, rectangularSelection, crosshairCursor, Decoration } from '@codemirror/view'
+import { EditorView, drawSelection, dropCursor, highlightSpecialChars, rectangularSelection, crosshairCursor, Decoration, type ViewUpdate } from '@codemirror/view'
 import { syntaxTree } from '@codemirror/language'
 import { undo, redo } from '@codemirror/commands'
 import { livePreview, setEditorFocus } from './live-preview'
@@ -50,6 +50,14 @@ export interface EditorOptions {
 }
 
 let handle: EditorHandle | null = null
+/** 外壳观察选区与文本变更，不参与文档事务。 */
+const updateObservers = new Set<(update: ViewUpdate) => void>()
+
+/** 注册编辑器状态观察器，返回解除函数。 */
+export function onEditorUpdate(observer: (update: ViewUpdate) => void): () => void {
+  updateObservers.add(observer)
+  return () => { updateObservers.delete(observer) }
+}
 
 export function getEditorHandle(): EditorHandle | null {
   return handle
@@ -128,9 +136,13 @@ export function createEditorCore(parent: HTMLElement, options: EditorOptions = {
     // `[ ]` 两个方框之间那一格里：左右键要一格一格挪过去，停在里面打字又把
     // `- [ ]` 敲成 `- [x]` 之类的残骸（#164）。声明成原子区间后，光标一次跨过它。
     taskMarkerAtomicRanges,
-    editableCompartment.of(EditorView.editable.of(options.editable ?? true)),
+    editableCompartment.of([
+      EditorView.editable.of(options.editable ?? true),
+      EditorState.readOnly.of(options.editable === false),
+    ]),
     // 文档变化的唯一出口：把新文本交给外壳
     EditorView.updateListener.of((update) => {
+      for (const observer of updateObservers) observer(update)
       if (update.docChanged && changeListener) {
         changeListener(update.state.doc.toString())
       }
@@ -150,12 +162,13 @@ export function createEditorCore(parent: HTMLElement, options: EditorOptions = {
     getText: () => view.state.doc.toString(),
 
     setText(text: string, clearHistory = false): void {
-      if (view.state.doc.toString() === text) return
+      if (!clearHistory && view.state.doc.toString() === text) return
       // 换文件时必须把撤销栈清掉，否则撤销会跨文档串味。光标也要落到正文开头：
       // 属性区是收起来的，停在它里面敲出来的字会看不见（见 state.ts 的 bodyStart）。
+      // 这是外壳的程序化同步（含源码模式），不受仅限制用户写入的只读过滤影响。
       const next = clearHistory
         ? EditorState.create({ doc: text, selection: { anchor: bodyStart(text) }, extensions: extension })
-        : view.state.update({ changes: { from: 0, to: view.state.doc.length, insert: text } }).state
+        : view.state.update({ changes: { from: 0, to: view.state.doc.length, insert: text }, filter: false }).state
       view.setState(next)
     },
 
@@ -171,7 +184,9 @@ export function createEditorCore(parent: HTMLElement, options: EditorOptions = {
 
     focus: () => view.focus(),
     setEditable(editable: boolean): void {
-      view.dispatch({ effects: editableCompartment.reconfigure(EditorView.editable.of(editable)) })
+      view.dispatch({ effects: editableCompartment.reconfigure([
+        EditorView.editable.of(editable), EditorState.readOnly.of(!editable),
+      ]) })
     },
     undo: () => { undo(view) },
     redo: () => { redo(view) },

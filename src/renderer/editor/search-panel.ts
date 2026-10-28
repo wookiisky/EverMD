@@ -9,10 +9,11 @@
 // core → search-panel → editor → core 的循环依赖。
 
 import { Decoration, EditorView, type DecorationSet } from '@codemirror/view'
-import { RangeSetBuilder, type StateEffect } from '@codemirror/state'
+import { ChangeSet, RangeSetBuilder, type StateEffect } from '@codemirror/state'
 import { getEditorView } from './editor'
 import { setSearchHighlight } from './search-highlight'
 import { getUiLanguage, type UiLanguage } from '../ui-language'
+import { SourceInputEvent } from './editor-source-input'
 
 export class SearchPanel {
   private container: HTMLDivElement
@@ -29,7 +30,8 @@ export class SearchPanel {
   private currentIndex = -1
   private visible = false
 
-  constructor() {
+  /** 明确切换搜索结果前，收妥源码模式的导航起点。 */
+  constructor(private readonly beforeNavigate: () => void = () => {}) {
     this.container = document.createElement('div')
     this.container.className = 'search-panel'
     this.container.style.display = 'none'
@@ -150,6 +152,7 @@ export class SearchPanel {
     const sourceEditor = this.getSourceEditor()
     const replacement = this.replaceInput.value
     if (sourceEditor) {
+      if (sourceEditor.readOnly) return
       const match = this.matches[this.currentIndex]
       sourceEditor.setRangeText(replacement, match.from, match.to, 'select')
       sourceEditor.dispatchEvent(new Event('input', { bubbles: true }))
@@ -169,8 +172,15 @@ export class SearchPanel {
     const sourceEditor = this.getSourceEditor()
     const replacement = this.replaceInput.value
     if (sourceEditor) {
-      sourceEditor.value = sourceEditor.value.replace(new RegExp(this.escapeRegExp(query), 'gi'), () => replacement)
-      sourceEditor.dispatchEvent(new Event('input', { bubbles: true }))
+      if (sourceEditor.readOnly) return
+      const previous = sourceEditor.value
+      const changes: { from: number; to: number; insert: string }[] = []
+      // 从当前文本收集实际匹配，既避开过期搜索位置，也保留匹配之间的导航锚点。
+      sourceEditor.value = previous.replace(new RegExp(this.escapeRegExp(query), 'gi'), (match, from: number) => {
+        changes.push({ from, to: from + match.length, insert: replacement })
+        return replacement
+      })
+      sourceEditor.dispatchEvent(new SourceInputEvent(ChangeSet.of(changes, previous.length)))
       this.searchSourceEditor(query, sourceEditor)
       return
     }
@@ -295,6 +305,7 @@ export class SearchPanel {
     this.currentIndex = (this.currentIndex + 1) % this.matches.length
     const sourceEditor = this.getSourceEditor()
     if (sourceEditor) {
+      this.beforeNavigate()
       this.selectSourceMatch(sourceEditor)
       this.updateCount()
       return
@@ -310,6 +321,7 @@ export class SearchPanel {
     this.currentIndex = (this.currentIndex - 1 + this.matches.length) % this.matches.length
     const sourceEditor = this.getSourceEditor()
     if (sourceEditor) {
+      this.beforeNavigate()
       this.selectSourceMatch(sourceEditor)
       this.updateCount()
       return

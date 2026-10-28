@@ -11,6 +11,8 @@ import { SearchPanel } from './editor/search-panel'
 import { applyTheme, loadSavedTheme } from './themes/theme-manager'
 import { setUiLanguage, isChinese, type UiLanguage } from './ui-language'
 import { Sidebars } from './sidebars'
+import { EditorNavigation } from './editor-navigation'
+import type { NavigationAnchor } from './navigation-history'
 import type { SidebarSide } from '../shared/sidebar-config'
 import { applyEditorFont, clearEditorFont, loadSavedEditorFont, resetEditorFontSize, showFontSettingsModal, stepEditorFontSize } from './editor/font-settings'
 import './themes/base.css'
@@ -248,6 +250,75 @@ const tabs: DocumentTab[] = []
 let activeTabId: string | null = null
 let nextTabId = 1
 let switchingTab = false
+// 所有文档切换与整次历史回放共用队列，保存和定位不会交叉落到其他文件。
+let documentOperationQueue: Promise<void> = Promise.resolve()
+// 等待切换期间的控件事件不属于用户在文档内停留的位置。
+let documentOperationActive = false
+// 编辑器与首个标签就绪后创建；启动时的文件事件仍可沿用原加载流程。
+let navigation: EditorNavigation | null = null
+
+// 串行完成一次文档操作，失败后仍允许后续操作继续。
+function enqueueDocumentOperation<T>(operation: () => Promise<T>, record = true): Promise<T> {
+  const result = documentOperationQueue.then(async () => {
+    if (record) navigation?.beforeSwitch()
+    // 等待保存或读取时不能继续写入即将离开的缓冲区，否则新输入可能在切换时遗失。
+    const sourceReadOnly = sourceEl().readOnly
+    documentOperationActive = true
+    sourceEl().readOnly = true
+    setEditorEditable(false)
+    try {
+      return await operation()
+    } finally {
+      sourceEl().readOnly = sourceReadOnly
+      setEditorEditable(!isPresenting())
+      documentOperationActive = false
+      if (record) navigation?.afterSwitch()
+      // 只读期间恢复选区不能获得可编辑焦点；等装饰与 contenteditable 更新后再聚焦。
+      if (!isPresenting()) {
+        if (sourceModeActive) sourceEl().focus({ preventScroll: true })
+        else {
+          const view = getEditorView()
+          const doc = view?.state.doc
+          const tabId = activeTabId
+          view?.requestMeasure({
+            key: enqueueDocumentOperation,
+            read: () => null,
+            write: () => queueMicrotask(() => {
+              if (!sourceModeActive && activeTabId === tabId && view.state.doc === doc) view.focus()
+            }),
+          })
+        }
+      }
+    }
+  })
+  documentOperationQueue = result.then(() => undefined, (error) => { console.error('文档切换失败', error) })
+  return result
+}
+
+// 公开入口负责排队，内部组合操作调用 Now 版本，避免等待自己。
+function openNewTab(): Promise<void> {
+  return enqueueDocumentOperation(openNewTabNow)
+}
+
+// 标签身份始终与文件身份一同核对。
+function activateTab(id: string): Promise<'ok' | 'missing' | 'cancelled'> {
+  return enqueueDocumentOperation(() => activateTabNow(id))
+}
+
+// 关闭与前进后退共享切换边界。
+function closeTab(id: string): Promise<void> {
+  return enqueueDocumentOperation(() => closeTabNow(id))
+}
+
+// 显式打开与文件列表浏览保持各自的标签约定。
+function openFileInNewTab(path: string): Promise<void> {
+  return enqueueDocumentOperation(() => openFileInNewTabNow(path))
+}
+
+// 批量关闭也作为一次文档操作，取消后不继续关闭。
+function closeTabsMatching(keep: (index: number) => boolean): Promise<void> {
+  return enqueueDocumentOperation(() => closeTabsMatchingNow(keep))
+}
 
 const tabBarEl = () => document.getElementById('tab-bar') as HTMLElement
 
@@ -517,7 +588,7 @@ function ensureTab(): DocumentTab {
   return tab
 }
 
-async function openNewTab(): Promise<void> {
+async function openNewTabNow(): Promise<void> {
   const previous = activeTab()
   captureActiveTab()
   if (!await saveTabForLeaving(previous)) return
@@ -567,22 +638,27 @@ async function refreshDocumentFileUrl(): Promise<void> {
   applyDocumentFileUrl(url)
 }
 
-async function activateTab(id: string): Promise<void> {
-  if (switchingTab || id === activeTabId) return
+async function activateTabNow(id: string): Promise<'ok' | 'missing' | 'cancelled'> {
+  if (id === activeTabId) return 'ok'
+  if (switchingTab) return 'cancelled'
   if (isPresenting()) stopSlideshow()
   const target = tabs.find((tab) => tab.id === id)
-  if (!target) return
+  if (!target) return 'cancelled'
   const previous = activeTab()
   captureActiveTab()
-  if (!await saveTabForLeaving(previous)) return
+  if (!await saveTabForLeaving(previous)) return 'cancelled'
   switchingTab = true
   try {
     // Point the window at the incoming document first: this re-points the file
     // watcher, the title and the recent list, and reports whether the file
     // changed while this tab sat in the background. An untitled tab passes null
     // so the window stops pointing at the tab we are leaving.
-    const disk = await window.electronAPI.activateFile(target.filePath)
-    applyDocumentFileUrl(disk?.fileUrl ?? null)
+    const result = target.filePath ? await window.electronAPI.navigateToFile(target.filePath, true) : null
+    if (result?.status === 'missing') return 'missing'
+    if (result?.status === 'error') return 'cancelled'
+    if (!target.filePath) await window.electronAPI.activateFile(null)
+    const disk = result?.status === 'ok' ? result : null
+    applyDocumentFileUrl(result?.status === 'ok' || result?.status === 'cached' ? result.fileUrl : null)
     // This document may have been written in a different style than the one we
     // are leaving; its content comes back with it, and the style lives in the
     // content itself, so there is nothing to restore separately.
@@ -597,6 +673,7 @@ async function activateTab(id: string): Promise<void> {
     if (changedOnDisk && !target.dirty) {
       target.diskContent = disk!.content
       setContent(disk!.content, true)
+      navigation?.reloaded()
       clearDirty()
       clearSaveStatus()
     } else if (target.sourceMode) {
@@ -636,12 +713,13 @@ async function activateTab(id: string): Promise<void> {
     } else editorScroller().scrollTop = target.scrollTop
     renderTabBar()
     if (changedOnDisk && target.dirty) raiseExternalConflict()
+    return 'ok'
   } finally {
     switchingTab = false
   }
 }
 
-async function closeTab(id: string): Promise<void> {
+async function closeTabNow(id: string): Promise<void> {
   const index = tabs.findIndex((tab) => tab.id === id)
   if (index < 0) return
   const tab = tabs[index]
@@ -660,7 +738,13 @@ async function closeTab(id: string): Promise<void> {
       return
     }
   }
+  // 先确认替代标签能激活，再移除当前标签；读取失败仍保留可见文档。
+  if (tab.id === activeTabId && tabs.length > 1) {
+    const replacement = tabs[index + 1] ?? tabs[index - 1]
+    if (await activateTabNow(replacement.id) !== 'ok') return
+  }
   tabs.splice(index, 1)
+  navigation?.closed(tab.id, tab.filePath)
   if (tabs.length === 0) {
     // The last tab closed: the window falls back to a single blank document and
     // the bar disappears with it — then asks to close (#132). A clean blank
@@ -668,13 +752,9 @@ async function closeTab(id: string): Promise<void> {
     // loop here forever: close the blank, get a fresh blank. If the close is
     // denied (the guard never does for a clean window), the fallback remains.
     activeTabId = null
-    await openNewTab()
+    await openNewTabNow()
     void window.electronAPI.closeWindow()
     return
-  }
-  if (tab.id === activeTabId) {
-    activeTabId = null
-    await activateTab(tabs[Math.min(index, tabs.length - 1)].id)
   }
   renderTabBar()
 }
@@ -688,36 +768,76 @@ function confirmDiscardUntitled(): boolean {
 
 // Open a file in a tab of its own. Reuses a blank current tab, and never opens
 // the same file twice: an already open document just gets focused.
-async function openFileInNewTab(path: string): Promise<void> {
+async function openFileInNewTabNow(path: string): Promise<void> {
   const existing = tabs.find((tab) => tab.filePath === path)
   if (existing) {
-    await activateTab(existing.id)
+    await activateTabNow(existing.id)
     return
   }
+  captureActiveTab()
+  if (!await saveTabForLeaving(activeTab())) return
+  const result = await window.electronAPI.navigateToFile(path)
+  if (result.status !== 'ok') return
   const current = activeTab()
-  if (current && !current.filePath && !current.dirty) {
-    await window.electronAPI.openSibling(path)
-    return
+  if (current && (current.filePath || current.dirty)) {
+    // 只有读取成功才创建标签；中间的空标签不进入导航历史，也不重绑主进程。
+    activeTabId = null
+    ensureTab()
   }
-  await openNewTab()
-  // Claim the path before the 'file-opened' round-trip lands: a burst of
-  // queued tab-opens would otherwise see this tab as still blank and reuse it
-  // for the next file, overwriting the one just opened (#99).
-  const claimed = activeTab()
-  // A failed save can prevent openNewTab from creating a tab. Keep the source.
-  if (!claimed || claimed === current) return
-  claimed.filePath = path
-  await window.electronAPI.openSibling(path)
+  applyOpenedFile(result)
+}
+
+// 文件列表与历史重开都在当前标签浏览，已打开的目标则激活原标签。
+async function openFileInCurrentTabNow(path: string): Promise<'ok' | 'missing' | 'cancelled'> {
+  const existing = tabs.find((tab) => tab.filePath === path)
+  if (existing) return activateTabNow(existing.id)
+  captureActiveTab()
+  if (dirty && !await saveCurrent()) return 'cancelled'
+  const result = await window.electronAPI.navigateToFile(path)
+  if (result.status !== 'ok') return result.status === 'missing' ? 'missing' : 'cancelled'
+  applyOpenedFile(result)
+  return 'ok'
+}
+
+// 历史中的标签可能已装入另一文件，路径优先；无路径文档只能返回仍打开的原标签。
+async function openNavigationAnchor(anchor: NavigationAnchor): Promise<'ok' | 'missing' | 'cancelled'> {
+  if (anchor.filePath) return openFileInCurrentTabNow(anchor.filePath)
+  if (!tabs.some(tab => tab.id === anchor.tabId && !tab.filePath)) return 'missing'
+  return activateTabNow(anchor.tabId)
+}
+
+// 显式应用一次已成功读取的文件，定位恢复不再与下一帧归零竞争。
+function applyOpenedFile(data: { path: string | null; content: string; fileUrl: string | null }): void {
+  ensureTab()
+  const previous = activeTab()!
+  if (!previous.filePath && data.path) navigation?.closed(previous.id, null)
+  currentFilePath = data.path
+  applyDocumentFileUrl(data.fileUrl)
+  dirty = false
+  previous.filePath = data.path
+  previous.dirty = false
+  previous.diskContent = data.content
+  resetDirty()
+  previous.revision = documentRevision
+  setContent(data.content, true)
+  navigation?.reloaded()
+  editorScroller().scrollTop = 0
+  sourceEl().scrollTop = 0
+  updateFileTitle()
+  updatePanelVisibility()
+  void refreshSiblings()
+  scheduleOutlineUpdate()
+  renderTabBar()
 }
 
 // Closing several tabs runs one at a time: each close may need its own unsaved
 // confirmation, and a cancelled one stops the rest.
-async function closeTabsMatching(keep: (index: number) => boolean): Promise<void> {
+async function closeTabsMatchingNow(keep: (index: number) => boolean): Promise<void> {
   for (;;) {
     const index = tabs.findIndex((_tab, i) => keep(i))
     if (index < 0) return
     const before = tabs.length
-    await closeTab(tabs[index].id)
+    await closeTabNow(tabs[index].id)
     if (tabs.length === before) return
   }
 }
@@ -824,6 +944,9 @@ function bindTabBar(api: import('../preload/index').ElectronAPI): void {
 function noteTabSaved(content: string): void {
   const tab = activeTab()
   if (!tab) return
+  if (tab.filePath !== currentFilePath) {
+    navigation?.renamed({ filePath: tab.filePath, tabId: tab.id }, { filePath: currentFilePath, tabId: tab.id })
+  }
   tab.diskContent = content
   tab.filePath = currentFilePath
   tab.dirty = dirty
@@ -1011,7 +1134,13 @@ function caretViewportOffset(fraction: number, height: number, lineHeight: numbe
   return Math.max(margin, Math.min(height - margin, fraction * height))
 }
 
+// 切换排版只同步位置基线，不产生新的导航动作。
 function toggleSourceMode(): void {
+  if (navigation) navigation.withoutRecording(toggleSourceModeNow)
+  else toggleSourceModeNow()
+}
+
+function toggleSourceModeNow(): void {
   if (sourceModeActive) {
     const ta = sourceEl()
     const { selectionStart, selectionEnd, selectionDirection } = ta
@@ -1140,6 +1269,7 @@ function renderOutline(side?: SidebarSide): void {
         const current = (sourceModeActive ? sourceOutline(sourceEl().value) : visualOutline())[index]
         if (!current) return
         if (sourceModeActive) {
+          navigation?.beforeSwitch()
           beginOutlineJump()
           const source = sourceEl()
           const lineHeight = Number.parseFloat(getComputedStyle(source).lineHeight) || 24
@@ -1725,7 +1855,7 @@ async function init(): Promise<void> {
   }
   applyEditorFont(loadSavedEditorFont())
 
-  const searchPanel = new SearchPanel()
+  const searchPanel = new SearchPanel(() => navigation?.beforeSwitch())
   searchPanel.setLanguage(language)
   api.onSearch(() => searchPanel.show())
   // Cmd/Ctrl+F 在页面这一层也接一次：菜单的快捷键是主路径（macOS 上由菜单先接走），
@@ -1809,8 +1939,10 @@ async function init(): Promise<void> {
         await openFileInNewTab(btn.dataset.path)
         return
       }
-      if (btn.dataset.kind === 'file' && dirty && !await saveCurrent()) return
-      await api.openSibling(btn.dataset.path)
+      const path = btn.dataset.path
+      if (btn.dataset.kind === 'file') {
+        await enqueueDocumentOperation(() => openFileInCurrentTabNow(path))
+      } else await api.openSibling(path)
     })
 
     // Right-click on a file panel entry opens the native context menu. The
@@ -1830,6 +1962,25 @@ async function init(): Promise<void> {
   // the first frame, so the strip never renders without one.
   ensureTab()
   renderTabBar()
+  navigation = new EditorNavigation({
+    getIdentity: () => activeTabId ? { filePath: currentFilePath, tabId: activeTabId } : null,
+    isSourceMode: () => sourceModeActive,
+    source: sourceEl(),
+    isProgrammatic: () => applyingProgrammaticChange || documentOperationActive || isPresenting(),
+    open: openNavigationAnchor,
+    onStateChange: state => { void api.reportNavigationState(state) },
+  })
+  navigation.initialize()
+  api.onNavigateHistory(direction => { void enqueueDocumentOperation(() => navigation!.navigate(direction), false) })
+  // 在捕获阶段接住浏览器侧的快捷键，避免被编辑器的移动命令再次消费。
+  document.addEventListener('keydown', event => {
+    const mac = navigator.platform.includes('Mac')
+    if (!event.altKey || event.shiftKey || event.ctrlKey || event.metaKey !== mac) return
+    if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
+    event.preventDefault()
+    event.stopPropagation()
+    void enqueueDocumentOperation(() => navigation!.navigate(event.key === 'ArrowLeft' ? -1 : 1), false)
+  }, true)
 
   sourceToggleBtnEl().addEventListener('click', toggleSourceMode)
   api.onToggleSourceMode(() => toggleSourceMode())
@@ -1863,7 +2014,7 @@ async function init(): Promise<void> {
 
   api.onMenuOpen(async () => {
     // 'file-opened' event drives the content load (and file-panel refresh)
-    await api.openFile()
+    await enqueueDocumentOperation(() => api.openFile())
   })
 
   api.onMenuSave(() => { void saveCurrent() })
@@ -1888,38 +2039,16 @@ async function init(): Promise<void> {
     renderTabBar()
   })
   api.onFileOpened((data) => {
-    // A document opened into a window that has none yet (a launch with a file)
-    // lands in the first tab rather than creating a second one.
-    ensureTab()
-    currentFilePath = data.path
-    applyDocumentFileUrl(data.fileUrl ?? null)
-    dirty = false
-    const tab = activeTab()
-    if (tab) {
-      tab.filePath = data.path
-      tab.dirty = false
-      tab.revision = documentRevision
-      tab.diskContent = data.content
-    }
-    resetDirty()
-    setContent(data.content, true)
-    const resetScroll = () => {
-      editorScroller().scrollTop = 0
-      sourceEl().scrollTop = 0
-    }
-    resetScroll()
-    requestAnimationFrame(resetScroll)
-    updateFileTitle()
-    updatePanelVisibility()
-    refreshSiblings()
-    scheduleOutlineUpdate()
-    renderTabBar()
+    void enqueueDocumentOperation(async () => { applyOpenedFile({ ...data, fileUrl: data.fileUrl ?? null }) })
   })
   api.onFileChanged((content) => {
     if (dirty) {
       raiseExternalConflict()
       return
     }
+    // 重建编辑器状态会重新布局；热更新保留阅读位置，不把视口拉回旧光标。
+    const scrollSnapshot = sourceModeActive ? null : getEditorView()?.scrollSnapshot()
+    const sourceScrollTop = sourceEl().scrollTop
     const body = takeFrontmatter(content)
     if (sourceModeActive) {
       sourceEl().value = body
@@ -1928,6 +2057,9 @@ async function init(): Promise<void> {
       // one undo step would also let a stray undo write stale content back.
       setMarkdownProgrammatically(body, true)
     }
+    navigation?.reloaded()
+    if (sourceModeActive) sourceEl().scrollTop = sourceScrollTop
+    else if (scrollSnapshot) getEditorView()?.dispatch({ effects: scrollSnapshot })
     updateSourceToggle()
     updateWordCount()
     resetDirty()
@@ -1959,6 +2091,7 @@ async function init(): Promise<void> {
   api.onExternalConflictResult((result) => {
     if (result.action === 'load' && typeof result.content === 'string') {
       applyContent(result.content)
+      navigation?.reloaded()
       resetDirty()
       updateWordCount()
       scheduleOutlineUpdate()

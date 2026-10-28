@@ -1,0 +1,14 @@
+{
+  "zh": {
+    "back": "后退",
+    "forward": "前进",
+    "openError": "无法打开文件",
+    "ok": "好"
+  },
+  "en": {
+    "back": "Go Back",
+    "forward": "Go Forward",
+    "openError": "Could not open the file",
+    "ok": "OK"
+  }
+}
