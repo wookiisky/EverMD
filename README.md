@@ -51,7 +51,7 @@ Twelve built-in themes, six light, six dark, inspired by Bear, Notion, iA Writer
 - **Editor Font Settings**: Pick any installed system font and size for the editor; your choice wins over theme defaults.
 - **Multiple Windows**: Independent editor windows, each with its own save queue and close protection.
 - **Save Status Hint**: A quiet titlebar indicator shows unsaved/saved, then fades away.
-- **Heading Anchors**: Click intra-document anchor links to jump between headings, CJK included.
+- **Link Navigation**: Click links to jump to headings or HTML anchors (`<a id="…">`), open another Markdown file in a tab, or open a web page in your browser. Cross-file anchors and Chinese headings are supported; no modifier key is needed.
 - **Version Changelog**: The first launch after an update opens the built-in changelog once, so you can see what changed without repeated prompts.
 - **PDF, HTML & Word Export**: Turn your Markdown document into a themed PDF, self-contained HTML, or editable Word document.
 - **Image Export**: Share Markdown as one continuous PNG at the desktop or mobile reading width; longer documents continue as numbered pages.

@@ -19,7 +19,7 @@ import { renderWholeDocument, restoreViewport } from '../print-layout'
 import { headingFlashEffect, setCleanExport as setCleanExportEffect, setDocumentFileUrlEffect, primeDocumentFileUrl } from './live-preview'
 import { runFormatCommand as runFormat, type FormatCommandId } from './format-commands'
 import { isChinese } from '../ui-language'
-import { headingAnchorLine } from './heading-anchor'
+import { documentAnchor } from './document-anchor'
 import { isDiagramZoomed } from './mermaid-bridge'
 import { hideBlankLinesField, setHideBlankLinesEffect } from './blank-line-visibility'
 
@@ -28,9 +28,43 @@ import 'katex/dist/katex.min.css'
 
 // --- 标题锚点（文档内跳转，见 #50）---
 
+/** 跳转到标题或显式 HTML 锚点，供文内和跨文件链接共用。 */
 export function jumpToHeading(fragment: string): void {
-  const line = headingAnchorLine(getMarkdown(), fragment)
-  if (line !== null) jumpToLine(line)
+  const view = handle?.getView()
+  if (!view) return
+  const anchor = documentAnchor(getMarkdown(), fragment)
+  if (!anchor) return
+  if (anchor.id === undefined) {
+    jumpToLine(view.state.doc.lineAt(anchor.from).number - 1)
+    return
+  }
+  // HTML 锚点只滚动，不移动光标，避免触发整块源码编辑。
+  const doc = view.state.doc
+  view.dispatch({ effects: EditorView.scrollIntoView(anchor.from, { y: 'start', yMargin: 24 }) })
+  // CM6 在本轮测量末尾执行源码滚动，块内定位要排在它之后，免得被覆盖。
+  requestAnimationFrame(() => view.requestMeasure({
+    key: jumpToHeading,
+    read() {
+      if (view.state.doc !== doc) return null
+      // 先由源码范围把屏外 widget 带入视口，再在它内部找目标；不查询应用外壳的 id。
+      const widget = view.dom.querySelector(`.cm-md-html[data-source-from="${anchor.from}"]`)
+      const target = Array.from(widget?.querySelectorAll<HTMLElement>('[id]') ?? [])
+        .find(element => element.id === anchor.id)
+      if (!target) return null
+      const top = view.scrollDOM.scrollTop + target.getBoundingClientRect().top
+        - view.scrollDOM.getBoundingClientRect().top - 24
+      const highlight = target.textContent ? target : target.nextElementSibling ?? target.parentElement
+      return { top, highlight }
+    },
+    write(measured) {
+      if (!measured || view.state.doc !== doc) return
+      view.scrollDOM.scrollTop = measured.top
+      // widget 内部由我们管理，可直接复用已有的落点动画，不改编辑器选区。
+      const element = measured.highlight
+      element?.classList.add('cm-md-jump-flash')
+      setTimeout(() => element?.classList.remove('cm-md-jump-flash'), 1600)
+    },
+  }))
 }
 
 // --- 标题跳转的落点反馈（见 #64）---
@@ -161,7 +195,7 @@ function getViewOf(handle: EditorHandle): EditorView {
 }
 
 /**
- * 编辑器上的交互：文档内锚点跳转、⌘点击开外部链接、任务列表勾选、可复制代码块。
+ * 编辑器上的交互：链接跳转、任务列表勾选、可复制代码块。
  * 这些行为与用什么编辑器核心无关，都是 DOM 层面的事。
  */
 /**
@@ -172,7 +206,7 @@ function getViewOf(handle: EditorHandle): EditorView {
  * 表格、HTML 块里画出来的真 `<a>` 也算。
  */
 function linkHrefOf(target: EventTarget | null): string | null {
-  if (!(target instanceof HTMLElement)) return null
+  if (!(target instanceof Element)) return null
   const anchor = target.closest('a[href]')
   if (anchor) return anchor.getAttribute('href')
   const marked = target.closest('[data-href]')
@@ -185,37 +219,26 @@ function installEditorInteractions(root: HTMLElement, view: EditorView): void {
   root.addEventListener('mousedown', (e) => {
     if (e.button !== 0) return
     const href = linkHrefOf(e.target)
-    if (href && (href.startsWith('#') || e.metaKey || e.ctrlKey)) {
+    if (href) {
       e.preventDefault()
       e.stopPropagation()
     }
   }, true)
 
-  // 文档内锚点是纯导航：在捕获阶段处理掉，别让 CM6 再插手，
-  // 否则放置光标（以及它异步的滚动到选区）会盖掉这次标题跳转（#50）。
+  // 所有链接普通点击即导航，在捕获阶段拦下，避免放置光标或进入块编辑。
   root.addEventListener(
     'click',
     (e) => {
       if (e.button !== 0) return
       const href = linkHrefOf(e.target)
-      if (!href || !href.startsWith('#')) return
+      if (!href) return
       e.preventDefault()
       e.stopPropagation()
-      jumpToHeading(href.slice(1))
+      if (href.startsWith('#')) jumpToHeading(href.slice(1))
+      else window.electronAPI.openExternal(href)
     },
     true,
   )
-
-  // ⌘/Ctrl + 点击：网页交给浏览器，本地 Markdown 在标签页打开。
-  root.addEventListener('click', (e) => {
-    if (e.button !== 0 || !(e.metaKey || e.ctrlKey)) return
-    const href = linkHrefOf(e.target)
-    if (href && !href.startsWith('#')) {
-      e.preventDefault()
-      e.stopPropagation()
-      window.electronAPI.openExternal(href)
-    }
-  }, true)
 
   // 任务列表：点复选框切换勾选。
   // CM6 这边没有节点可以改 attrs，勾选就是改写源码里的 `[ ]` / `[x]`。
@@ -262,7 +285,7 @@ function installEditorInteractions(root: HTMLElement, view: EditorView): void {
   // DOM 上摘掉；等 click 事件到达时，它的 target 已经不在树上，算不出点到哪一格
   // （实测连跑三轮都是这样：源码退回了，打的字却落在表格开头）。
   root.addEventListener('mousedown', (e) => {
-    if (e.button !== 0) return
+    if (e.defaultPrevented || e.button !== 0) return
     const widget = tableWidgetOf(e.target)
     if (!widget) return
     const anchor = tableCellAnchor(view, widget, e)

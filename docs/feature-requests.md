@@ -174,11 +174,13 @@ Zoom (#129): a diagram that does not fit the column can be zoomed with Ctrl/⌘ 
 
 **Status:** Loading the disk version after an external edit is the one action that used to throw unsaved input away with no trace (the editor flushes its undo history at the same time). The dropped version is now written to `~/.colamd/recovered/<document>-<timestamp>.md` first, the dialog button says so before it happens, and the title bar reports where it went. If the copy cannot be written, nothing is discarded: the editor keeps its version. The wider request behind this issue (a version history with retention and a restore view) is not planned; see Candidates.
 
-### Heading anchor navigation
+### Link and anchor navigation
 
 **Source:** [#50](https://github.com/marswaveai/ColaMD/issues/50)
 
-**Status:** Plain clicks on `[text](#anchor)` links jump to the matching heading with a smooth scroll. Slug resolution follows GitHub rules: lowercase, punctuation stripped, CJK preserved, URL-encoded targets decoded, case-insensitive fallback, and `-1`/`-2` suffixes for repeated headings. External links keep the ⌘/Ctrl+click-to-open behavior; anchor clicks never move the caret.
+**Status:** Plain clicks follow all links: `[text](#anchor)` navigates within the document, `[text](other.md#anchor)` opens or activates the target Markdown tab and then navigates, and HTTP/HTTPS links open in the system browser. Relative file paths resolve against the current document's directory. Modifier keys are optional.
+
+Targets include headings and explicit HTML IDs such as `<a id="1-先区分五类对象">`. Exact HTML IDs take precedence over generated heading anchors; duplicate IDs use the first occurrence. Heading resolution preserves Chinese, decodes URL-encoded fragments, removes punctuation, allows case-insensitive fallback, and uses `-1`/`-2` suffixes for repeated headings. HTML tags embedded in a heading do not become part of its generated anchor. Code examples, comments, frontmatter, and filtered HTML content do not create HTML targets. Full-document source lookup finds offscreen targets; once an HTML block is rendered, navigation locates the target inside that block without moving the caret into HTML source. Missing anchors leave the current position unchanged. Navigation does not edit document bytes or create duplicate tabs.
 
 ### Theme menu selected state
 

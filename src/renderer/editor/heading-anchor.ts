@@ -1,4 +1,5 @@
 import { parser } from '@lezer/markdown'
+import { frontmatterRange } from './math-scan'
 
 /** Find headings outside the viewport too, ignoring heading-like code blocks. */
 export function headingAnchorLine(markdown: string, fragment: string): number | null {
@@ -8,11 +9,23 @@ export function headingAnchorLine(markdown: string, fragment: string): number | 
     .replace(/[\u0300-\u036f]/g, '')
     .replace(/[^\p{L}\p{N}\p{M}\s_-]/gu, '').replace(/\s+/g, '-')
   const seen = new Map<string, number>()
+  const front = frontmatterRange(markdown)
   let line: number | null = null
   parser.parse(markdown).iterate({
     enter(node) {
+      if (front && node.name !== 'Document' && node.from < front.to) return false
       if (!/^(ATX|Setext)Heading[1-6]$/.test(node.name)) return
-      const title = markdown.slice(node.from, node.to)
+      // HTML 标签不属于标题文字；使用语法节点，避免删掉行内代码里的尖括号。
+      let text = ''
+      let from = node.from
+      const cursor = node.node.cursor()
+      while (cursor.next()) {
+        if (cursor.name !== 'HTMLTag') continue
+        text += markdown.slice(from, cursor.from)
+        from = cursor.to
+      }
+      text += markdown.slice(from, node.to)
+      const title = text
         .replace(/^#{1,6}\s+|\s+#+\s*$|\r?\n[=-]+\s*$/g, '')
         .replace(/!?\[([^\]]*)\]\([^)]*\)/g, '$1').replace(/[*_`]/g, '')
       const base = slugify(title)

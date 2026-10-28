@@ -795,6 +795,8 @@ function appendInline(parent: HTMLElement, text: string, base: string | null): v
       const el = document.createElement('a')
       el.textContent = g.linkText || g.href || ''
       const href = (g.href ?? '').trim()
+      // 本地文件和文内锚点也交给统一导航处理器，不让浏览器按应用路径解释。
+      if (href) el.setAttribute('data-href', href)
       if (/^https?:\/\//i.test(href)) el.setAttribute('href', href)
       parent.appendChild(el)
     } else if (/^<br/i.test(match[0])) {

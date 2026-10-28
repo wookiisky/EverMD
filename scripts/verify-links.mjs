@@ -23,7 +23,6 @@ let passed = 0
 const check = (name, fn) => { fn(); passed++; console.log(`PASS ${name}`) }
 // macOS turns Ctrl+left-click into a right-click, so the modifier has to be Cmd there.
 const MOD = process.platform === 'darwin' ? 4 : 2
-const MOD_LABEL = process.platform === 'darwin' ? 'Cmd' : 'Ctrl'
 
 async function unitChecks() {
   for (const [name, entry] of [['paths', 'src/main/markdown-link.ts'], ['headings', 'src/renderer/editor/heading-anchor.ts']]) {
@@ -66,6 +65,9 @@ async function unitChecks() {
   for (const [fragment, expected] of [['%E4%B8%AD%E6%96%87-%E6%A0%87%E9%A2%98', 0], ['fake', null], ['repeat', 6], ['repeat-1', 8], ['setext', 10], ['absent', null]]) {
     check(`heading ${fragment}`, () => assert.equal(headingAnchorLine(md, fragment), expected))
   }
+  check('HTML anchors do not pollute the heading slug', () => {
+    assert.equal(headingAnchorLine('## 中文标题 <a id="explicit"></a>\n', '中文标题'), 0)
+  })
   // Exercise the real tab opener with a failed save, not a copy of its logic.
   const code = readFileSync(join(ROOT, 'src/renderer/main.ts'), 'utf8')
   const start = code.indexOf('async function openFileInNewTab(')
@@ -164,15 +166,30 @@ async function runtimeChecks() {
   for (const dir of [notes, join(notes, 'child'), home, profile]) mkdirSync(dir, { recursive: true })
   const source = join(notes, 'source.md'), target = join(notes, '中文 空格.md'), childFile = join(notes, 'child', 'child.md')
   const lineFile = join(notes, 'lines.md'), largeFile = join(notes, 'large.md')
+  const anchorFile = join(notes, 'anchors.md')
   const lineText = ['---', 'title: Lines', '---', ...Array.from({ length: 143 }, (_, i) => `Paragraph ${i}.`), 'LINE_147_TARGET', 'Last line.'].join('\r\n')
   const largeText = [...Array.from({ length: 146 }, () => 'Long wrapped paragraph. '.repeat(180)), 'LARGE_147_TARGET', 'Last line.'].join('\n')
   const targetText = '# Destination\n\n' + 'Paragraph.\n\n'.repeat(100) + '## 目标标题\n\nTail.\n'
   const sourceText = '# Source\n\n[相对链接](中文%20空格.md)\n\n[子目录](child/child.md)\n\n[标题](中文%20空格.md#目标标题)\n\n' +
     `[行号](lines.md:147)\n\n[文件行号](${pathToFileURL(lineFile).href}:147)\n\n[源码行号](large.md:147)\n\n[越界行号](lines.md:9999)\n\n` +
-    `[File URL](${pathToFileURL(target).href})\n\n[网页](https://example.com)\n\n[缺失](missing.md)\n\n[文内](#source)\n`
+    `[File URL](${pathToFileURL(target).href})\n\n[网页](https://example.com)\n\n[缺失](missing.md)\n\n[文内](#source)\n\n[HTML锚点](anchors.md#1-先区分五类对象)\n\n` +
+    '| Link |\n| --- |\n| [表格链接](中文%20空格.md) |\n| [表格文内](#source) |\n\n' +
+    '<div><a href="中文%20空格.md">HTML块链接</a></div>\n'
+  const anchorText = '# Anchors\n\n' +
+    '[文内显式](#1-先区分五类对象) · [块内显式](#deep-block) · [标题显式](#heading-explicit) · [未闭合](#unclosed) · [实体](#a%26b) · [外壳同名](#titlebar) · [无目标](#missing-anchor)\n\n' +
+    'Paragraph before anchors.\n\n'.repeat(100) +
+    '<a id="1-先区分五类对象"></a>ANCHOR_TARGET\n\n' +
+    '## HTML_HEADING_TARGET <a id="heading-explicit"></a>\n\n' +
+    '<a id="unclosed">\nUNCLOSED_TARGET\n\n' +
+    '<a id="a&amp;b">ENTITY_TARGET</a>\n\n' +
+    '<a id="titlebar">EDITOR_TITLEBAR_TARGET</a>\n\n' +
+    '<div>\n' + '<p>Block paragraph.</p>\n'.repeat(100) +
+    '<a id="deep-block">DEEP_BLOCK_TARGET</a>\n</div>\n'
   writeFileSync(source, sourceText); writeFileSync(target, targetText); writeFileSync(childFile, '# Child\n\n[上级](../source.md)\n')
-  writeFileSync(lineFile, lineText); writeFileSync(largeFile, largeText)
-  const before = new Map([source, target, childFile, lineFile, largeFile].map(file => [file, { bytes: readFileSync(file), mtime: statSync(file).mtimeMs }]))
+  writeFileSync(lineFile, lineText); writeFileSync(largeFile, largeText); writeFileSync(anchorFile, anchorText)
+  const before = new Map([source, target, childFile, lineFile, largeFile, anchorFile].map(file => [file, { bytes: readFileSync(file), mtime: statSync(file).mtimeMs }]))
+  const anchorBundle = await build({ entryPoints: [join(ROOT, 'src/renderer/editor/document-anchor.ts')], bundle: true, platform: 'browser', format: 'iife', globalName: 'anchorChecks', write: false })
+  const themeBundle = await build({ entryPoints: [join(ROOT, 'src/renderer/themes/theme-manager.ts')], bundle: true, platform: 'browser', format: 'iife', globalName: 'themeChecks', write: false })
   const events = join(WORK, 'events.jsonl'), harness = join(WORK, 'main.cjs')
   const port = 18000 + Math.floor(Math.random() * 2000)
   // Stub only OS browser launching/error dialogs; real IPC, file IO and tab UI run.
@@ -191,6 +208,35 @@ async function runtimeChecks() {
     client = await connect(port)
     const { send, evaluate } = client
     await send('Emulation.setFocusEmulationEnabled', { enabled: true })
+    await evaluate(anchorBundle.outputFiles[0].text)
+    await evaluate(themeBundle.outputFiles[0].text)
+    for (const [name, markdown, fragment, expected] of [
+      ['double quotes', '<a id="中文"></a>', '%E4%B8%AD%E6%96%87', '中文'],
+      ['single quotes', "<a id='single'></a>", 'single', 'single'],
+      ['unquoted', '<a id=plain></a>', 'plain', 'plain'],
+      ['multiline uppercase', '<A\n ID="multiline"></A>', 'multiline', 'multiline'],
+      ['attribute entity', '<a id="a&amp;b"></a>', 'a%26b', 'a&b'],
+      ['literal percent', '<a id="a%20b"></a>', 'a%2520b', 'a%20b'],
+      ['heading child', '## Text <a id="child"></a>', 'child', 'child'],
+      ['code fence', '```html\n<a id="fake"></a>\n```', 'fake', null],
+      ['inline code', '`<a id="fake"></a>`', 'fake', null],
+      ['comment', '<!-- <a id="fake"></a> -->', 'fake', null],
+      ['data-id is not id', '<a data-id="fake"></a>', 'fake', null],
+      ['case-sensitive id', '<a id="MixedCase"></a>', 'mixedcase', null],
+      ['blocked HTML', '<script><a id="fake"></a></script>', 'fake', null],
+      ['frontmatter', '---\nid: <a id="fake"></a>\n---\n\nBody.', 'fake', null],
+      ['missing target', '<a id="real"></a>', 'absent', null],
+    ]) {
+      const found = await evaluate(`anchorChecks.documentAnchor(${JSON.stringify(markdown)}, ${JSON.stringify(fragment)})`)
+      check(`HTML resolution: ${name}`, () => assert.equal(found?.id ?? null, expected))
+    }
+    for (const [name, markdown, fragment, expectedFrom] of [
+      ['explicit id precedes heading fallback', '# chosen\n\n<a id="chosen"></a>', 'chosen', 10],
+      ['duplicate ids use the first', '<a id="same"></a>\n\n<a id="same"></a>', 'same', 0],
+    ]) {
+      const found = await evaluate(`anchorChecks.documentAnchor(${JSON.stringify(markdown)}, ${JSON.stringify(fragment)})`)
+      check(`HTML resolution: ${name}`, () => assert.equal(found?.from, expectedFrom))
+    }
     const wait = async (expression, label) => {
       for (let i = 0; i < 80; i++) { if (await evaluate(expression)) return; await sleep(100) }
       throw new Error(`Timed out: ${label}`)
@@ -201,27 +247,37 @@ async function runtimeChecks() {
       await wait(`document.title==='source.md'`, 'return to source')
       await sleep(150)
     }
-    const click = async (label, modifiers = MOD) => {
-      const point = await evaluate(`(() => {
+    const click = async (label, modifiers = 0) => {
+      // Links outside CM6's viewport have no DOM yet; reveal the link before clicking it.
+      await evaluate(`document.querySelector('#editor .cm-scroller').scrollTop=0`)
+      await sleep(100)
+      let point
+      for (let i = 0; i < 40 && !point; i++) {
+        point = await evaluate(`(() => {
         const a=[...document.querySelectorAll('#editor [data-href], #editor a[href]')].find(a=>a.textContent===${JSON.stringify(label)});
         if(!a)return null; a.scrollIntoView({block:'center',behavior:'instant'});
         const r=[...a.getClientRects()].find(r=>r.width>2&&r.height>2);
         return r?{x:r.x+r.width/2,y:r.y+r.height/2}:null;
       })()`)
+        if (!point) {
+          await evaluate(`document.querySelector('#editor .cm-scroller').scrollTop+=innerHeight/2`)
+          await sleep(50)
+        }
+      }
       assert(point, `Link not rendered: ${label}`)
       for (const type of ['mousePressed', 'mouseReleased']) await send('Input.dispatchMouseEvent', { type, ...point, button: 'left', clickCount: 1, modifiers })
     }
     await click('标题')
     await wait(`document.title==='中文 空格.md' && [...document.querySelectorAll('.cm-line')].some(e=>e.textContent.includes('目标标题')&&e.getBoundingClientRect().y>=0&&e.getBoundingClientRect().bottom<innerHeight)`, 'heading in a newly opened document')
-    check(`${MOD_LABEL}+click opens a new file at an offscreen heading`, () => {})
+    check('plain click opens a new file at an offscreen heading', () => {})
     await openSource(); await click('相对链接')
-    await wait(`document.title==='中文 空格.md'`, `${MOD_LABEL}+click local link`)
-    check(`${MOD_LABEL}+click opens a Chinese/space filename`, () => {})
+    await wait(`document.title==='中文 空格.md'`, 'plain click local link')
+    check('plain click opens a Chinese/space filename', () => {})
     const count = await evaluate(`document.querySelectorAll('.tab-entry').length`)
-    await openSource(); await click('相对链接', 4)
-    await wait(`document.title==='中文 空格.md'`, 'Meta+click existing link')
+    await openSource(); await click('相对链接', MOD)
+    await wait(`document.title==='中文 空格.md'`, 'modifier click existing link')
     const nextCount = await evaluate(`document.querySelectorAll('.tab-entry').length`)
-    check('Meta+click reuses an existing tab', () => assert.equal(nextCount, count))
+    check('modifier click still reuses an existing tab', () => assert.equal(nextCount, count))
     await openSource(); await click('子目录')
     await wait(`document.title==='child.md'`, 'child')
     await click('上级'); await wait(`document.title==='source.md'`, 'parent')
@@ -250,12 +306,67 @@ async function runtimeChecks() {
     await openSource(); await click('文内', 0)
     await wait(`!!document.querySelector('.cm-md-jump-flash')`, 'in-document heading')
     check('in-document anchor', () => {})
+    await openSource(); await click('表格文内')
+    await wait(`document.querySelector('.cm-md-jump-flash')?.textContent.includes('Source')`, 'plain click table anchor')
+    check('plain click a table anchor jumps within the document', () => {})
+    const visibleText = text => `(() => {
+      const walker=document.createTreeWalker(document.querySelector('#editor .cm-content'), NodeFilter.SHOW_TEXT);
+      let n; while(n=walker.nextNode()) { if(n.textContent.includes(${JSON.stringify(text)}))break; }
+      if(!n)return false; const r=n.parentElement.getBoundingClientRect(), s=document.querySelector('#editor .cm-scroller').getBoundingClientRect();
+      return r.bottom>s.top && r.top<s.bottom;
+    })()`
+    await openSource(); await click('HTML锚点')
+    await wait(`document.title==='anchors.md' && ${visibleText('ANCHOR_TARGET')}`, 'cross-file explicit anchor in a new tab')
+    check('plain click opens a file at an offscreen HTML anchor', () => {})
+    const anchorTabCount = await evaluate(`document.querySelectorAll('.tab-entry').length`)
+    await openSource(); await click('HTML锚点')
+    await wait(`document.title==='anchors.md' && ${visibleText('ANCHOR_TARGET')}`, 'cross-file explicit anchor in an existing tab')
+    const reusedAnchorTabCount = await evaluate(`document.querySelectorAll('.tab-entry').length`)
+    check('cross-file HTML navigation reuses its tab', () => assert.equal(reusedAnchorTabCount, anchorTabCount))
+    for (const [label, text] of [
+      ['文内显式', 'ANCHOR_TARGET'], ['标题显式', 'HTML_HEADING_TARGET'], ['未闭合', 'UNCLOSED_TARGET'],
+      ['实体', 'ENTITY_TARGET'], ['外壳同名', 'EDITOR_TITLEBAR_TARGET'], ['块内显式', 'DEEP_BLOCK_TARGET'],
+    ]) {
+      await click(label)
+      await wait(visibleText(text), `HTML target visible: ${label}`)
+      const sourceVisible = await evaluate(`!![...document.querySelectorAll('#editor .cm-line')].find(e=>e.textContent.includes('<a id='))`)
+      check(`HTML navigation stays rendered: ${label}`, () => assert.equal(sourceVisible, false))
+    }
+    await click('无目标')
+    const noTargetScroll = await evaluate(`document.querySelector('#editor .cm-scroller').scrollTop`)
+    await sleep(200)
+    const settledNoTargetScroll = await evaluate(`document.querySelector('#editor .cm-scroller').scrollTop`)
+    check('missing anchor keeps the link location', () => assert.equal(settledNoTargetScroll, noTargetScroll))
+    for (const theme of ['light', 'dark']) {
+      await evaluate(`themeChecks.applyTheme(${JSON.stringify(theme)})`)
+      await wait(`document.body.classList.contains('theme-${theme}')`, `${theme} theme applied`)
+      for (const [label, selector] of [['表格链接', '.cm-md-table-widget'], ['HTML块链接', '.cm-md-html a[href]']]) {
+        await openSource(); await click(label)
+        await wait(`document.title==='中文 空格.md'`, `${theme}: plain click ${label}`)
+        await openSource()
+        await wait(`[...document.querySelectorAll('#editor ${selector}')].some(e=>e.textContent.includes(${JSON.stringify(label)}))`, `${theme}: ${label} stays rendered`)
+        check(`${theme}: plain click ${label} opens its file without source editing`, () => {})
+      }
+      const externalCount = readFileSync(events, 'utf8').split('\n').filter(line=>line.includes('"external":')).length
+      await click('网页'); await sleep(150)
+      const nextExternalCount = readFileSync(events, 'utf8').split('\n').filter(line=>line.includes('"external":')).length
+      check(`${theme}: plain click opens a web link`, () => assert.equal(nextExternalCount, externalCount + 1))
+      await click('HTML锚点')
+      await wait(`document.title==='anchors.md' && ${visibleText('ANCHOR_TARGET')}`, `${theme}: cross-file HTML anchor`)
+      for (const [label, text] of [['标题显式', 'HTML_HEADING_TARGET'], ['块内显式', 'DEEP_BLOCK_TARGET']]) {
+        await click(label)
+        await wait(visibleText(text), `${theme}: ${label} visible`)
+        const sourceVisible = await evaluate(`!![...document.querySelectorAll('#editor .cm-line')].find(e=>e.textContent.includes('<a id='))`)
+        check(`${theme}: ${label} stays rendered`, () => assert.equal(sourceVisible, false))
+      }
+    }
     for (const [file, old] of before) check(`navigation preserves ${fileURLToPath(pathToFileURL(file)).split(/[\\/]/).pop()}`, () => {
       assert.deepEqual(readFileSync(file), old.bytes); assert.equal(statSync(file).mtimeMs, old.mtime)
     })
     await evaluate('window.close()')
   } catch (error) {
     if (client) console.error(await client.evaluate(`JSON.stringify({title:document.title,tabs:[...document.querySelectorAll('.tab-entry')].map(x=>x.textContent)})`))
+    if (client) console.error(await client.evaluate(`JSON.stringify({scroll:document.querySelector('#editor .cm-scroller')?.scrollTop,html:[...document.querySelectorAll('#editor .cm-md-html')].map(e=>({from:e.dataset.sourceFrom,to:e.dataset.sourceTo,top:e.getBoundingClientRect().top,height:e.getBoundingClientRect().height,ids:[...e.querySelectorAll('[id]')].map(a=>({id:a.id,top:a.getBoundingClientRect().top}))}))})`))
     console.error(output.slice(-2000)); throw error
   } finally {
     client?.close()
