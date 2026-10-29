@@ -1,6 +1,12 @@
 # ColaMD Themes
 
-ColaMD ships with 12 built-in themes. Every theme below is available as a standalone `.css` file — download it and place it in `~/.colamd/themes/`, or use **Theme > Import Theme** in ColaMD to import directly.
+ColaMD 的 12 套内置主题和用户主题采用相同的结构化配置。在 **主题 → 主题详细设置** 中修改颜色与排版，或通过 **主题 → 导入主题** 载入 YAML、JSON 和旧 CSS。
+
+配置面板提供界面配色、各级标题、正文、强调、引用、列表、代码、表格及代码语法颜色。段内行高控制同段自动换行和手动续行；段落间距是在段尾增加的额外空隙，两者分别配置。文件里的空行仍遵循「隐藏空行」偏好，主题设置不修改 Markdown 原文。
+
+导出可选格式化 YAML 或 JSON，两种格式表达相同配置。导出的文件独立可用，不引用其他主题文件或本机路径。导入先进入预览草稿，保存后才应用。内置主题可定制并恢复原版，也可另存副本；已有的编辑器字体偏好仍优先于主题字体。
+
+下方 YAML 文件由 `src/shared/builtin-themes.json` 生成，内置主题只维护这一份来源。主题名称统一使用英文，桌面菜单、配置面板和网页预览均读取配置中的 `name`，不随界面语言切换。更新后运行 `node scripts/export-builtin-themes.mjs`，检查使用 `node scripts/export-builtin-themes.mjs --check`。
 
 See the [theme swatches](https://raw.githubusercontent.com/marswaveai/ColaMD/main/docs/images/theme-swatches.svg) for a visual preview.
 
@@ -8,27 +14,41 @@ See the [theme swatches](https://raw.githubusercontent.com/marswaveai/ColaMD/mai
 
 | Theme | File | Description |
 |-------|------|-------------|
-| 浅色 Light | [light.css](light.css) | GitHub-inspired clean white. The default look. |
-| 雅致 Elegant | [elegant.css](elegant.css) | Warm serif with terracotta accents, inspired by classic writing apps. |
-| 简白 Notion | [notion.css](notion.css) | Clean minimal workspace, warm off-black text on white. |
-| 作家 Writer | [writer.css](writer.css) | iA Writer homage: monospace body, zero decoration. |
-| 熊红 Bear | [bear.css](bear.css) | Crisp white with confident red accent, Bear style. |
-| 羊皮纸 Sepia | [sepia.css](sepia.css) | Kindle / Apple Books warm paper, serif body for long-form reading. |
+| Light | [light.yaml](light.yaml) | GitHub-inspired clean white. |
+| Elegant | [elegant.yaml](elegant.yaml) | Warm serif with terracotta accents. |
+| Notion | [notion.yaml](notion.yaml) | Clean minimal workspace. |
+| Writer | [writer.yaml](writer.yaml) | Monospace body, restrained decoration. |
+| Bear | [bear.yaml](bear.yaml) | Crisp white with red accents. |
+| Sepia | [sepia.yaml](sepia.yaml) | Warm paper and serif text. |
 
 ## Dark Themes
 
 | Theme | File | Description |
 |-------|------|-------------|
-| 深色 Dark | [dark.css](dark.css) | GitHub dark: soft black with blue links. |
-| 暖木 Gruvbox | [gruvbox.css](gruvbox.css) | Warm walnut dark, cream text, orange ember accents. |
-| 午夜 Midnight | [midnight.css](midnight.css) | Pure OLED black, Apple-style blue links, maximum contrast. |
-| 夜航 Solarized Dark | [solarized-dark.css](solarized-dark.css) | Deep teal-black sea, muted cyan text, orange and blue stars. |
-| 极地 Nord | [nord.css](nord.css) | Arctic night: cool blue-grays, frost-cyan links. |
-| 德古拉 Dracula | [dracula.css](dracula.css) | Gothic neon: pink, purple, and cyan candlelight. |
+| Dark | [dark.yaml](dark.yaml) | Soft black with blue links. |
+| Gruvbox | [gruvbox.yaml](gruvbox.yaml) | Warm dark background and cream text. |
+| Midnight | [midnight.yaml](midnight.yaml) | Black background and blue links. |
+| Solarized Dark | [solarized-dark.yaml](solarized-dark.yaml) | Deep teal with muted accents. |
+| Nord | [nord.yaml](nord.yaml) | Cool blue-grays and pale links. |
+| Dracula | [dracula.yaml](dracula.yaml) | Dark background and vivid accents. |
 
-## Creating Your Own Theme
+## 配置格式
 
-ColaMD custom themes are plain CSS files. Start from [template.css](template.css): it is a working theme with every variable and a few selectors commented, and the same check that guards the built-in themes runs over it, so it can not teach you a selector that does nothing.
+配置包含 `version`、`id`、`name`、`appearance`、`colors`、`typography`、`styles`、`syntax` 和可选的 `extensions`。完整字段与单位见 [theme-config.d.ts](../src/shared/theme-config.d.ts)。省略样式字段会继承公共排版，省略代码语法颜色会根据代码背景明暗自动选择。
+
+`typography.lineHeight` 是同段内行高倍率，`typography.paragraphSpacing` 是段落后增加的 em 空隙。`baseLineHeight` 保留旧主题的容器行高基准，供未单独配置的内容继承。表单中的「跟随默认」可恢复原配置值。
+
+## 旧 CSS 的兼容
+
+本目录中的 `.css` 文件是历史主题兼容样例，新主题以 YAML/JSON 为主。应用启动时会将 `~/.colamd/themes/` 中的旧 CSS 纳入统一主题库，并保留原文件；旧选中记录也会恢复到对应主题。
+
+可识别的颜色、字体和 Markdown 样式进入可编辑字段。复杂选择器、媒体查询等仍由 `extensions.css` 保留；明确设置的配置项优先。兼容样式可在面板中查看，无法保证任意 CSS 都能反推为表单。导出 YAML/JSON 时会携带兼容样式。
+
+以下记录历史 CSS 格式，供兼容和迁移参考。
+
+## Historical CSS Format
+
+The historical [template.css](template.css) documents the variable and selector hooks used by older theme files.
 
 ### CSS Variables
 

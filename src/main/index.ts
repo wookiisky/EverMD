@@ -5,7 +5,7 @@ import { autoUpdater } from 'electron-updater'
 import { join, basename, dirname, extname, isAbsolute, resolve, relative, sep } from 'path'
 import { fileURLToPath, pathToFileURL } from 'url'
 import { appendFile, readFile, writeFile, readdir, copyFile, mkdir, stat } from 'fs/promises'
-import { watch, FSWatcher, existsSync, readdirSync, readFileSync, writeFileSync, statSync } from 'fs'
+import { watch, FSWatcher, existsSync, readFileSync, writeFileSync, statSync } from 'fs'
 import { resolveMarkdownLink } from './markdown-link'
 import type { SidebarPreferences } from '../shared/sidebar-config'
 import sidebarLabels from '../shared/sidebar-labels.json'
@@ -13,6 +13,10 @@ import type { NavigationFileResult, NavigationMenuState } from '../shared/naviga
 import navigationLabels from '../shared/navigation-labels.json'
 import type { DocumentCloseChoice, DocumentCloseRequest } from '../shared/document-close-config'
 import documentCloseLabels from '../shared/document-close-labels.json'
+import type { ThemeDefinition, ThemeDraftRecoveryResult } from '../shared/theme-config'
+import { BUILTIN_THEMES, ThemeValidationError, validateThemeDefinition } from '../shared/theme-definition'
+import themeFileLabels from '../shared/theme-file-labels.json'
+import { ThemeStorage, parseThemeFile, serializeThemeFile, themeFromLegacyCSS, recoverThemeDraft } from './theme-storage'
 
 const startupStartedAt = performance.now()
 const startupTraceEnabled = process.env.COLAMD_STARTUP_TRACE === '1'
@@ -34,6 +38,9 @@ function writeStartupTrace(): void {
 
 
 const themesDir = join(app.getPath('home'), '.colamd', 'themes')
+const themeStorage = new ThemeStorage(themesDir)
+// 启动和 IPC 共用一次加载，主题窗口不会读到迁移一半的列表。
+let themeStorageReady: Promise<ThemeDefinition[]> | null = null
 const recoveryDir = join(app.getPath('home'), '.colamd', 'recovered')
 const releaseNoticePath = join(app.getPath('userData'), 'release-notice.json')
 
@@ -96,10 +103,13 @@ async function listSiblingFiles(filePath: string | null, browseDir?: string): Pr
   return parent === dir ? children : [{ name: '..', path: parent, kind: 'parent' }, ...children]
 }
 
-function ensureThemesDir(): void {
-  if (!existsSync(themesDir)) {
-    mkdir(themesDir, { recursive: true }).catch(() => {})
-  }
+// 缓存已完成的加载任务，损坏主题不会阻止编辑器启动。
+function loadThemeLibrary(): Promise<ThemeDefinition[]> {
+  themeStorageReady ??= themeStorage.load().catch((error) => {
+    console.error('主题库加载失败', error)
+    return []
+  })
+  return themeStorageReady
 }
 
 // --- Recent files + session restore (#28, #45) ---
@@ -238,15 +248,6 @@ function setRestoreOnLaunch(enabled: boolean): void {
   recentStore.restoreOnLaunch = enabled
   persistRecentStore()
   buildMenu()
-}
-
-async function scanCustomThemes(): Promise<string[]> {
-  try {
-    const files = await readdir(themesDir)
-    return files.filter(f => f.endsWith('.css')).sort()
-  } catch {
-    return []
-  }
 }
 
 // Per-window state
@@ -416,6 +417,8 @@ function createWindow(
     sidebarWindowOrder.add(win)
     syncSidebarMenu(win)
     updateNavigationMenu()
+    currentTheme = themeByWindow.get(win) ?? currentTheme
+    updateThemeMenuChecks()
   })
 
   // The renderer owns the shell's layout, so it needs to know when the window
@@ -1544,10 +1547,119 @@ ipcMain.handle('load-theme-css', async (_event, fileName: string) => {
   }
 })
 
+// 成功落盘后同步定义，主题选择仍由每个窗口自己持有。
+function notifyThemeDefinitionsChanged(): void {
+  const definitions = themeStorage.list()
+  for (const win of BrowserWindow.getAllWindows()) {
+    if (!win.isDestroyed()) win.webContents.send('theme-definitions-changed', definitions)
+  }
+  // 原生菜单回调返回后再重建，避免 macOS 在菜单回调中重入。
+  setImmediate(() => buildMenu())
+}
+
+ipcMain.handle('list-theme-definitions', async () => {
+  await loadThemeLibrary()
+  return themeStorage.list()
+})
+
+ipcMain.handle('resolve-legacy-theme-id', async (_event, fileName: string) => {
+  await loadThemeLibrary()
+  return themeStorage.resolveLegacyThemeId(fileName)
+})
+
+ipcMain.handle('save-theme-definition', async (_event, input: unknown) => {
+  const labels = themeFileLabels[getPreferredCheatsheetLanguage()]
+  try {
+    await loadThemeLibrary()
+    const theme = await themeStorage.save(validateThemeDefinition(input))
+    notifyThemeDefinitionsChanged()
+    return { ok: true, theme }
+  } catch (error) {
+    console.error('主题保存失败', error)
+    return { ok: false, error: labels.saveFailed }
+  }
+})
+
+// 恢复副本不注册到主题库，也不影响任何窗口当前应用的主题。
+ipcMain.handle('recover-theme-draft', async (_event, theme: ThemeDefinition, invalidFields: Record<string, string>): Promise<ThemeDraftRecoveryResult> => {
+  try {
+    return { ok: true, recoveryPath: await recoverThemeDraft(recoveryDir, theme, invalidFields) }
+  } catch (error) {
+    console.error('主题草稿恢复副本写入失败', error)
+    return { ok: false, error: error instanceof Error ? error.message : String(error) }
+  }
+})
+
+ipcMain.handle('delete-theme-definition', async (_event, id: unknown) => {
+  const labels = themeFileLabels[getPreferredCheatsheetLanguage()]
+  try {
+    if (typeof id !== 'string') throw new TypeError('Invalid theme ID')
+    await loadThemeLibrary()
+    await themeStorage.remove(id)
+    notifyThemeDefinitionsChanged()
+    return { ok: true }
+  } catch (error) {
+    console.error('主题恢复失败', error)
+    return { ok: false, error: labels.deleteFailed }
+  }
+})
+
+ipcMain.handle('import-theme-file', async (event) => {
+  const win = getWinFromEvent(event)
+  if (!win) return null
+  const labels = themeFileLabels[getPreferredCheatsheetLanguage()]
+  try {
+    const selection = await dialog.showOpenDialog(win, {
+      title: labels.importTitle,
+      filters: [{ name: labels.importFilter, extensions: ['yaml', 'yml', 'json', 'css'] }],
+      properties: ['openFile']
+    })
+    if (selection.canceled || !selection.filePaths[0]) return null
+    const sourcePath = selection.filePaths[0]
+    const source = await readFile(sourcePath, 'utf8')
+    const extension = extname(sourcePath).toLowerCase()
+    const definition = extension === '.css'
+      ? themeFromLegacyCSS(basename(sourcePath), source)
+      : parseThemeFile(source, extension === '.json' ? 'json' : 'yaml')
+    // 导入始终建立草稿副本，文件携带的 ID 不能隐式覆盖本机主题。
+    return { ok: true, theme: { ...definition, id: `user-${randomUUID()}` } }
+  } catch (error) {
+    console.error('主题导入失败', error)
+    const detail = error instanceof ThemeValidationError
+      ? error.code === 'version' ? labels.invalidVersion : labels.invalidField.replace('{path}', error.path)
+      : labels.importFailed
+    return { ok: false, error: detail }
+  }
+})
+
+ipcMain.handle('export-theme-definition', async (event, input: unknown, format: unknown) => {
+  const win = getWinFromEvent(event)
+  const labels = themeFileLabels[getPreferredCheatsheetLanguage()]
+  if (format !== 'yaml' && format !== 'json') return { ok: false, error: labels.invalidFormat }
+  if (!win) return { ok: true, canceled: true }
+  try {
+    const theme = validateThemeDefinition(input)
+    const serialized = serializeThemeFile(theme, format)
+    const selection = await dialog.showSaveDialog(win, {
+      title: labels.exportTitle,
+      defaultPath: `${theme.name.replace(/[\\/:*?"<>|]/g, '_')}.${format}`,
+      filters: [{ name: format.toUpperCase(), extensions: [format] }]
+    })
+    if (selection.canceled || !selection.filePath) return { ok: true, canceled: true }
+    await writeFile(selection.filePath, serialized, 'utf8')
+    return { ok: true }
+  } catch (error) {
+    console.error('主题导出失败', error)
+    return { ok: false, error: labels.exportFailed }
+  }
+})
+
 // Renderer reports the applied theme; the Theme menu checkmarks are updated
 // in place (never rebuild the menu from an IPC callback — setApplicationMenu
 // inside a menu-triggered path hangs the main process).
 let currentTheme = 'elegant'
+// 菜单勾选跟随当前窗口，不把后台窗口的主题选择应用到前台。
+const themeByWindow = new WeakMap<BrowserWindow, string>()
 // 渲染层拥有侧栏偏好；主进程仅缓存各窗口状态以同步原生菜单。
 let currentSidebars: SidebarPreferences = {
   left: { content: 'files', visible: false, width: 220 },
@@ -1690,8 +1802,11 @@ ipcMain.handle('reveal-path', (_event, target: unknown) => {
   return true
 })
 
-ipcMain.handle('report-theme', (_event, theme: unknown) => {
+ipcMain.handle('report-theme', (event, theme: unknown) => {
   const next = typeof theme === 'string' && theme ? theme : 'elegant'
+  const win = getWinFromEvent(event)
+  if (win) themeByWindow.set(win, next)
+  if (win && win !== sidebarTargetWindow()) return
   if (next === currentTheme) return
   currentTheme = next
   updateThemeMenuChecks()
@@ -1847,26 +1962,21 @@ function buildMenu(): void {
   const preferences = sidebarWindow && sidebarPreferencesByWindow.get(sidebarWindow)
   if (preferences) currentSidebars = preferences
 
-  // Scan custom themes synchronously for menu building
-  const customThemeItems: Electron.MenuItemConstructorOptions[] = []
-  try {
-    const files = readdirSync(themesDir).filter((f: string) => f.endsWith('.css')).sort()
-    for (const file of files) {
-      customThemeItems.push({
-        label: file.replace(/\.css$/, ''),
-        id: `theme-custom-${file}`,
-        checked: currentTheme === `custom:${file}`,
-        type: 'checkbox' as const,
-        click: async () => {
-          try {
-            const css = await readFile(join(themesDir, file), 'utf-8')
-            sendToFocused('set-theme', `custom:${file}`)
-            sendToFocused('set-custom-css', css)
-          } catch { /* ignore */ }
-        }
-      })
-    }
-  } catch { /* themes dir may not exist yet */ }
+  // 内置定制仍显示在原菜单项，用户主题按稳定 ID 列出一次。
+  const builtinIds = new Set(BUILTIN_THEMES.map(theme => theme.id))
+  const savedThemes = new Map(themeStorage.list().map(theme => [theme.id, theme]))
+  // 名称来自主题配置，不随界面语言变化；内置主题重命名也在这里生效。
+  const themeMenuItem = (theme: ThemeDefinition): Electron.MenuItemConstructorOptions => ({
+    label: (savedThemes.get(theme.id) ?? theme).name,
+    id: `theme-${theme.id}`,
+    checked: currentTheme === theme.id,
+    type: 'checkbox',
+    click: () => sendToFocused('set-theme', theme.id)
+  })
+  const customThemeItems: Electron.MenuItemConstructorOptions[] = [...savedThemes.values()]
+    .filter(theme => !builtinIds.has(theme.id))
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .map(themeMenuItem)
 
   const preferredCheatsheetLanguage = getPreferredCheatsheetLanguage()
   const labels = preferredCheatsheetLanguage === 'zh'
@@ -1879,9 +1989,6 @@ function buildMenu(): void {
         setDefault: '设置为默认应用...',
         sourceMode: '切换 Markdown 源码', hideBlankLines: '隐藏空行',
         pageWidth: '正文宽度', pageWidthNarrow: '窄', pageWidthStandard: '标准', pageWidthWide: '宽',
-        light: '浅色', dark: '深色', elegant: '雅致',
-        sepia: '羊皮纸', notion: '简白', bear: '熊红', writer: '作家',
-        solarizedDark: '夜航', nord: '极地', gruvbox: '暖木', dracula: '德古拉', midnight: '午夜',
         importTheme: '导入主题...', whatsNew: '新功能演示',
         cheatsheet: 'Markdown 语法', about: '关于 ColaMD', checkForUpdates: '检查更新...', updateAvailable: '发现新版本', close: '关闭窗口',
         undo: '撤销', redo: '重做', cut: '剪切', copy: '复制', paste: '粘贴', selectAll: '全选',
@@ -1900,9 +2007,6 @@ function buildMenu(): void {
         setDefault: 'Set as Default...',
         sourceMode: 'Toggle Markdown Source', hideBlankLines: 'Hide Blank Lines',
         pageWidth: 'Text Width', pageWidthNarrow: 'Narrow', pageWidthStandard: 'Standard', pageWidthWide: 'Wide',
-        light: 'Light', dark: 'Dark', elegant: 'Elegant',
-        sepia: 'Sepia', notion: 'Notion', bear: 'Bear', writer: 'Writer',
-        solarizedDark: 'Solarized Dark', nord: 'Nord', gruvbox: 'Gruvbox', dracula: 'Dracula', midnight: 'Midnight',
         importTheme: 'Import Theme...', whatsNew: "What's New",
         cheatsheet: 'Markdown Syntax', about: 'About ColaMD', checkForUpdates: 'Check for Updates...', updateAvailable: 'Update Available', close: 'Close Window',
         undo: 'Undo', redo: 'Redo', cut: 'Cut', copy: 'Copy', paste: 'Paste', selectAll: 'Select All',
@@ -1943,39 +2047,18 @@ function buildMenu(): void {
     ]
   }))
 
-  const themeIdByLabel = new Map<string, string>([
-    [labels.light, 'light'],
-    [labels.elegant, 'elegant'],
-    [labels.notion, 'notion'],
-    [labels.writer, 'writer'],
-    [labels.bear, 'bear'],
-    [labels.sepia, 'sepia'],
-    [labels.dark, 'dark'],
-    [labels.gruvbox, 'gruvbox'],
-    [labels.midnight, 'midnight'],
-    [labels.solarizedDark, 'solarized-dark'],
-    [labels.nord, 'nord'],
-    [labels.dracula, 'dracula'],
-  ])
   const themeSubmenu: Electron.MenuItemConstructorOptions[] = [
-    { label: labels.light, id: 'theme-light', type: 'checkbox' as const, checked: currentTheme === 'light', click: () => sendToFocused('set-theme', 'light') },
-    { label: labels.elegant, id: 'theme-elegant', type: 'checkbox' as const, checked: currentTheme === 'elegant', click: () => sendToFocused('set-theme', 'elegant') },
-    { label: labels.notion, id: 'theme-notion', type: 'checkbox' as const, checked: currentTheme === 'notion', click: () => sendToFocused('set-theme', 'notion') },
-    { label: labels.writer, id: 'theme-writer', type: 'checkbox' as const, checked: currentTheme === 'writer', click: () => sendToFocused('set-theme', 'writer') },
-    { label: labels.bear, id: 'theme-bear', type: 'checkbox' as const, checked: currentTheme === 'bear', click: () => sendToFocused('set-theme', 'bear') },
-    { label: labels.sepia, id: 'theme-sepia', type: 'checkbox' as const, checked: currentTheme === 'sepia', click: () => sendToFocused('set-theme', 'sepia') },
+    ...BUILTIN_THEMES.filter(theme => theme.appearance === 'light').map(themeMenuItem),
     { type: 'separator' },
-    { label: labels.dark, id: 'theme-dark', type: 'checkbox' as const, checked: currentTheme === 'dark', click: () => sendToFocused('set-theme', 'dark') },
-    { label: labels.gruvbox, id: 'theme-gruvbox', type: 'checkbox' as const, checked: currentTheme === 'gruvbox', click: () => sendToFocused('set-theme', 'gruvbox') },
-    { label: labels.midnight, id: 'theme-midnight', type: 'checkbox' as const, checked: currentTheme === 'midnight', click: () => sendToFocused('set-theme', 'midnight') },
-    { label: labels.solarizedDark, id: 'theme-solarized-dark', type: 'checkbox' as const, checked: currentTheme === 'solarized-dark', click: () => sendToFocused('set-theme', 'solarized-dark') },
-    { label: labels.nord, id: 'theme-nord', type: 'checkbox' as const, checked: currentTheme === 'nord', click: () => sendToFocused('set-theme', 'nord') },
-    { label: labels.dracula, id: 'theme-dracula', type: 'checkbox' as const, checked: currentTheme === 'dracula', click: () => sendToFocused('set-theme', 'dracula') },
+    ...BUILTIN_THEMES.filter(theme => theme.appearance === 'dark').map(themeMenuItem)
   ]
   if (customThemeItems.length > 0) {
     themeSubmenu.push({ type: 'separator' }, ...customThemeItems)
   }
   themeSubmenu.push({ type: 'separator' }, {
+    label: themeFileLabels[preferredCheatsheetLanguage].settings,
+    click: () => sendToFocused('menu-theme-settings')
+  }, {
     label: labels.importTheme,
     click: () => sendToFocused('menu-import-theme')
   })
@@ -2238,7 +2321,7 @@ function buildMenu(): void {
   localizeWindowMenu(menu, labels)
   themeMenuItems = [
     ...themeSubmenu.filter((item): item is Electron.MenuItemConstructorOptions & { id: string } => typeof item.id === 'string')
-      .map((item) => ({ id: item.id, theme: themeIdByLabel.get(item.label ?? '') ?? (item.id.startsWith('theme-custom-') ? `custom:${String(item.label)}.css` : '') })),
+      .map((item) => ({ id: item.id, theme: item.id.slice('theme-'.length) })),
   ]
 }
 
@@ -2494,10 +2577,10 @@ if (!hasSingleInstanceLock) {
   })
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   if (!hasSingleInstanceLock) return
   markStartup('app-ready')
-  ensureThemesDir()
+  await loadThemeLibrary()
   buildMenu()
 
   // Check command line args for file paths

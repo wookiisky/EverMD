@@ -13,14 +13,17 @@ import { EditorView } from '@codemirror/view'
 import { tags as t } from '@lezer/highlight'
 
 export const markdownHighlightStyle = HighlightStyle.define([
-  { tag: t.heading1, fontWeight: '700' },
-  { tag: t.heading2, fontWeight: '700' },
-  { tag: t.heading3, fontWeight: '600' },
-  { tag: [t.heading4, t.heading5, t.heading6], fontWeight: '600' },
-  { tag: t.strong, fontWeight: '700' },
-  { tag: t.emphasis, fontStyle: 'italic' },
-  { tag: t.strikethrough, textDecoration: 'line-through' },
-  { tag: t.link, color: 'var(--link-color)' },
+  // 语法 span 消费主题同一份变量，不能用固定值盖住所在行的用户配置。
+  { tag: t.heading1, fontWeight: 'var(--theme-heading1-weight, 700)' },
+  { tag: t.heading2, fontWeight: 'var(--theme-heading2-weight, 700)' },
+  { tag: t.heading3, fontWeight: 'var(--theme-heading3-weight, 600)' },
+  { tag: t.heading4, fontWeight: 'var(--theme-heading4-weight, 600)' },
+  { tag: t.heading5, fontWeight: 'var(--theme-heading5-weight, 600)' },
+  { tag: t.heading6, fontWeight: 'var(--theme-heading6-weight, 600)' },
+  { tag: t.strong, fontWeight: 'var(--theme-strong-weight, 700)' },
+  { tag: t.emphasis, fontStyle: 'var(--theme-emphasis-style, italic)' },
+  { tag: t.strikethrough, textDecoration: 'var(--theme-strike-decoration, line-through)' },
+  { tag: t.link, color: 'var(--theme-link-color, var(--link-color))' },
   // 标记字符（`#`、`>`、`***`、围栏）压淡；**正文不许跟着淡**。
   // `t.list` 曾经也在这条里，它盖住的是列表项里的文字，不只是 `-`、`1.` 那两个字符：
   // 整个列表都发灰（2026-10-25 报的）。列表的圆点与序号由 editor-preview.css 单独管。

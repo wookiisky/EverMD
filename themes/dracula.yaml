@@ -1,0 +1,32 @@
+# 由 src/shared/builtin-themes.json 生成，请运行 node scripts/export-builtin-themes.mjs 更新。
+version: 1
+id: dracula
+name: Dracula
+appearance: dark
+colors:
+  bg: '#282a36'
+  text: '#f8f8f2'
+  textSecondary: '#afb7db'
+  textMuted: '#7f86a8'
+  border: '#3d4051'
+  link: '#bd93f9'
+  inlineCodeBackground: rgba(98, 114, 164, 0.2)
+  codeBlockBackground: '#21222c'
+  codeBlockText: var(--text-color)
+  quoteBorder: '#ff79c6'
+  quoteBackground: transparent
+  tableHeaderBackground: '#343746'
+  tableBorder: var(--border-color)
+  selection: rgba(189, 147, 249, 0.25)
+  highlight: rgba(241, 250, 140, 0.22)
+typography: {}
+styles:
+  heading1:
+    color: '#ffffff'
+  heading2:
+    color: '#ffffff'
+  heading3:
+    color: '#ffffff'
+  inlineCode:
+    color: '#8be9fd'
+syntax: {}

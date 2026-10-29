@@ -1,88 +1,63 @@
-const themes: Record<string, string> = {
-  light: 'theme-light',
-  dark: 'theme-dark',
-  elegant: 'theme-elegant',
-  sepia: 'theme-sepia',
-  notion: 'theme-notion',
-  bear: 'theme-bear',
-  writer: 'theme-writer',
-  'solarized-dark': 'theme-solarized-dark',
-  nord: 'theme-nord',
-  gruvbox: 'theme-gruvbox',
-  dracula: 'theme-dracula',
-  midnight: 'theme-midnight'
+import { BUILTIN_THEMES, cloneTheme, getBuiltinTheme } from '../../shared/theme-definition'
+import type { ThemeDefinition } from '../../shared/theme-config'
+import { applyThemeToDocument } from './theme-document'
+import { migrateLegacyTheme } from './theme-legacy-migration'
+
+/** 每个窗口单独选择主题，定义由主进程同步。 */
+let definitions: ThemeDefinition[] = []
+let currentTheme: ThemeDefinition | null = null
+const libraryListeners = new Set<() => void>()
+
+// 内置主题和用户定制通过同一种配置参与查找。
+export function getThemeDefinitions(): ThemeDefinition[] {
+  const combined = new Map(BUILTIN_THEMES.map(theme => [theme.id, theme]))
+  for (const theme of definitions) combined.set(theme.id, theme)
+  return Array.from(combined.values(), cloneTheme)
 }
 
-let customStyleEl: HTMLStyleElement | null = null
-
-// 用浏览器解析后的类型区分倍率和长度，calc、变量、相对单位遵循同一套 CSS 语义。
-function shareThemeLineHeight(rules: CSSRuleList, probe: HTMLElement): void {
-  for (const rule of Array.from(rules)) {
-    if (rule instanceof CSSStyleRule) {
-      const value = rule.style.getPropertyValue('line-height')
-      if (value && !value.includes('--md-body-line-height')) {
-        probe.style.setProperty('line-height', value, 'important')
-        const parsed = probe.computedStyleMap().get('line-height')
-        const inherited = parsed instanceof CSSUnitValue && parsed.unit === 'number' ? value : '1lh'
-        rule.style.setProperty('--md-body-line-height', inherited,
-          rule.style.getPropertyPriority('line-height'))
-      }
-    }
-    if (rule instanceof CSSGroupingRule) shareThemeLineHeight(rule.cssRules, probe)
-  }
+// 库更新只替换定义，是否刷新当前窗口由外壳决定。
+export function setThemeDefinitions(next: ThemeDefinition[]): void {
+  definitions = next.map(migrateLegacyTheme)
+  for (const listener of libraryListeners) listener()
 }
 
+// 成功保存后立即接入返回值，避免等待广播期间回退到旧配置。
+export function registerThemeDefinition(theme: ThemeDefinition): void {
+  definitions = [...definitions.filter(item => item.id !== theme.id), migrateLegacyTheme(theme)]
+}
+
+// 面板观察外部修改，但不覆盖正在编辑的草稿。
+export function onThemeLibraryChanged(listener: () => void): () => void {
+  libraryListeners.add(listener)
+  return () => libraryListeners.delete(listener)
+}
+
+// 返回副本，面板编辑不能修改正在使用的配置。
+export function getCurrentThemeDefinition(): ThemeDefinition {
+  return cloneTheme(currentTheme ?? getBuiltinTheme('elegant')!)
+}
+
+// 所有来源都编译为同一份主题样式；customCSS 只兼容旧调用和旧验收入口。
 export function applyTheme(name: string, customCSS?: string): void {
-  const body = document.body
-
-  // Remove all theme classes
-  Object.values(themes).forEach(cls => body.classList.remove(cls))
-  body.classList.remove('theme-custom')
-
-  // Remove custom theme style
-  if (customStyleEl) {
-    customStyleEl.remove()
-    customStyleEl = null
+  // 兼容旧版的两段 IPC：先收到文件标识时保留现有画面，收到 CSS 后再统一编译。
+  if (name.startsWith('custom:') && customCSS === undefined) {
+    localStorage.setItem('colamd-theme', name)
+    return
   }
-
-  if (customCSS || name.startsWith('custom:')) {
-    body.classList.add('theme-custom')
-    if (customCSS) {
-      customStyleEl = document.createElement('style')
-      customStyleEl.textContent = customCSS
-      document.head.appendChild(customStyleEl)
-      // 复用真实祖先的变量作用域；初次应用时编辑器尚未创建，临时搭出相同的层次。
-      const content = document.querySelector<HTMLElement>('#editor .cm-content')
-      const context = document.createElement('div')
-      context.className = 'cm-editor'
-      context.style.cssText = 'position: absolute; visibility: hidden; pointer-events: none;'
-      const scroller = document.createElement('div')
-      scroller.className = 'cm-scroller'
-      context.appendChild(scroller)
-      const probe = document.createElement('div')
-      probe.className = content?.className ?? 'cm-content'
-      probe.style.cssText = 'position: absolute; visibility: hidden; pointer-events: none;'
-      if (!content) (document.getElementById('editor') ?? body).appendChild(context)
-      const parent = content?.parentElement ?? scroller
-      parent.appendChild(probe)
-      try {
-        if (customStyleEl.sheet) shareThemeLineHeight(customStyleEl.sheet.cssRules, probe)
-      } finally {
-        probe.remove()
-        context.remove()
-      }
-    }
-  } else if (themes[name]) {
-    body.classList.add(themes[name])
+  let definition = getThemeDefinitions().find(theme => theme.id === name)
+  if (customCSS !== undefined) {
+    definition = migrateLegacyTheme({ version: 1, id: 'legacy-preview', name,
+      appearance: 'light', colors: {}, typography: {}, styles: {}, syntax: {}, extensions: { css: customCSS } })
   }
-
-  applyCodePalette()
+  definition ??= getBuiltinTheme('elegant')!
+  currentTheme = cloneTheme(definition)
+  applyThemeToDocument(document, definition)
 
   // Persist theme choice
-  localStorage.setItem('colamd-theme', name)
+  localStorage.setItem('colamd-theme', customCSS !== undefined ? name : definition.id)
 
   // Tell the main process so the theme menu can show the selected state
-  window.electronAPI?.reportTheme?.(name)
+  window.electronAPI?.reportTheme?.(customCSS !== undefined ? name : definition.id)
 
   // …and hand it the resolved shell colours. Windows paints the window controls
   // inside our own row (titleBarOverlay), and that overlay has to be told a real
@@ -133,41 +108,7 @@ function painted(color: string, background: string): string {
   }
 }
 
-/**
- * 代码块里的语法着色用哪一套配色。
- *
- * 判据是**代码块底色的明暗**，不是主题的明暗：elegant 和 bear 是浅色主题却配深色
- * 代码块，跟着主题走会得到浅底浅字。这跟 Mermaid 图挑配色是同一条规则
- * （见 editor/mermaid-bridge.ts），所以两处看起来才是一致的。
- *
- * 只在 body 上换一个类，颜色本身留在 base.css 里：颜色属于主题，判断属于这里。
- */
-function applyCodePalette(): void {
-  const bg = getComputedStyle(document.body).getPropertyValue('--code-block-bg').trim()
-  document.body.classList.toggle('code-palette-light', !isDarkSurface(bg))
-}
-
-/** 底色算亮还是暗（sRGB 亮度）。认不出来时按深色算：内置主题里深色代码块是多数。 */
-function isDarkSurface(color: string): boolean {
-  const hex = color.match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i)
-  let channels: number[] | null = null
-  if (hex) {
-    const digits = hex[1].length === 3 ? hex[1].replace(/./g, (c) => c + c) : hex[1]
-    channels = [0, 2, 4].map((i) => parseInt(digits.slice(i, i + 2), 16))
-  } else {
-    const rgb = color.match(/^rgba?\(\s*([\d.]+)[,\s]+([\d.]+)[,\s]+([\d.]+)/i)
-    if (rgb) channels = [rgb[1], rgb[2], rgb[3]].map(Number)
-  }
-  if (!channels) return true
-  const [r, g, b] = channels
-  return (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255 < 0.5
-}
-
+// 恢复时先保留标识，库加载后由 applyTheme 处理缺失文件。
 export function loadSavedTheme(): string {
-  const saved = localStorage.getItem('colamd-theme')
-  if (!saved) return 'elegant'
-  // Custom themes are stored as "custom:<file>.css". Preserve the name so a
-  // newly opened window can reload its stylesheet instead of falling back.
-  if (themes[saved] || saved.startsWith('custom:')) return saved
-  return 'elegant'
+  return localStorage.getItem('colamd-theme') || 'elegant'
 }

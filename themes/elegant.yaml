@@ -1,0 +1,34 @@
+# 由 src/shared/builtin-themes.json 生成，请运行 node scripts/export-builtin-themes.mjs 更新。
+version: 1
+id: elegant
+name: Elegant
+appearance: light
+colors:
+  bg: '#f0edea'
+  text: '#2c2c2c'
+  textSecondary: '#6c6c6c'
+  textMuted: '#777'
+  border: '#dedad5'
+  link: '#bc4424'
+  inlineCodeBackground: '#e8e4df'
+  codeBlockBackground: '#2c2c2c'
+  codeBlockText: '#e0dcd7'
+  quoteBorder: '#c44b2b'
+  quoteBackground: '#eae6e1'
+  tableHeaderBackground: '#eae6e1'
+  tableBorder: var(--border-color)
+  selection: rgba(196, 75, 43, 0.2)
+  highlight: '#f0d9a8'
+typography:
+  fontFamily: "'LXGW WenKai', 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', Georgia, serif"
+  baseLineHeight: 1.9
+styles:
+  inlineCode:
+    color: '#c44b2b'
+  tableHeader:
+    borderColor: '#c44b2b'
+    borderWidth: 2
+    sideBorders: false
+  tableCell:
+    sideBorders: false
+syntax: {}

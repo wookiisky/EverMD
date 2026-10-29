@@ -1,0 +1,41 @@
+# 由 src/shared/builtin-themes.json 生成，请运行 node scripts/export-builtin-themes.mjs 更新。
+version: 1
+id: notion
+name: Notion
+appearance: light
+colors:
+  bg: '#ffffff'
+  text: '#37352f'
+  textSecondary: '#777674'
+  textMuted: '#9b9a97'
+  border: '#eeeeed'
+  link: '#37352f'
+  inlineCodeBackground: '#f7f6f3'
+  codeBlockBackground: '#f7f6f3'
+  codeBlockText: var(--text-color)
+  quoteBorder: '#37352f'
+  quoteBackground: transparent
+  tableHeaderBackground: '#f7f6f3'
+  tableBorder: var(--border-color)
+  selection: rgba(35, 131, 226, 0.14)
+  highlight: '#fdecc8'
+typography: {}
+styles:
+  heading1:
+    fontWeight: 700
+    borderStyle: none
+    spacingAfter: 0
+  heading2:
+    fontWeight: 700
+    borderStyle: none
+    spacingAfter: 0
+  linkUrl:
+    color: '#9b9a97'
+  inlineCode:
+    color: '#eb5757'
+    background: '#f7f6f3'
+  tableHeader:
+    sideBorders: false
+  tableCell:
+    sideBorders: false
+syntax: {}

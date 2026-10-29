@@ -115,6 +115,11 @@ function pushListItemLines(state: EditorState, node: SyntaxNode, ranges: Decorat
       ...(paragraph ? { 'data-list-paragraph': String(paragraph.from) } : {}),
     } }) })
   }
+  // 块间距只落在真实列表项的首尾，不随可见视口或源码续行重复。
+  const firstFrom = state.doc.line(first).from
+  const lastFrom = state.doc.line(ownLast).from
+  ranges.push({ from: firstFrom, to: firstFrom, deco: BLOCK('cm-md-li-first') })
+  ranges.push({ from: lastFrom, to: lastFrom, deco: BLOCK('cm-md-li-last') })
 }
 
 /** 把区间藏起来（只是看不见，文本还在）。 */
@@ -1071,6 +1076,11 @@ function collectBlocks(state: EditorState, ranges: DecorationRange[], front: Ran
       }
       case 'Blockquote': {
         pushBlockLines(state, node.from, node.to, 'cm-md-blockquote', ranges)
+        // 语法边界包括引用内代码；DOM 邻接判断会把虚拟视口中间误当成块首。
+        const first = state.doc.lineAt(node.from).from
+        const last = state.doc.lineAt(Math.max(node.from, node.to - 1)).from
+        ranges.push({ from: first, to: first, deco: BLOCK('cm-md-blockquote-first') })
+        ranges.push({ from: last, to: last, deco: BLOCK('cm-md-blockquote-last') })
         break
       }
       case 'HorizontalRule': {

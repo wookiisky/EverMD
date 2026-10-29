@@ -1,0 +1,24 @@
+# 由 src/shared/builtin-themes.json 生成，请运行 node scripts/export-builtin-themes.mjs 更新。
+version: 1
+id: light
+name: Light
+appearance: light
+colors:
+  bg: '#ffffff'
+  text: '#24292f'
+  textSecondary: '#656d76'
+  textMuted: '#656d76'
+  border: '#dce1e6'
+  link: '#0969da'
+  inlineCodeBackground: rgba(175, 184, 193, 0.2)
+  codeBlockBackground: '#f6f8fa'
+  codeBlockText: var(--text-color)
+  quoteBorder: '#d0d7de'
+  quoteBackground: transparent
+  tableHeaderBackground: '#f6f8fa'
+  tableBorder: var(--border-color)
+  selection: rgba(9, 105, 218, 0.15)
+  highlight: '#fff3bf'
+typography: {}
+styles: {}
+syntax: {}

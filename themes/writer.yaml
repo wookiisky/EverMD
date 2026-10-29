@@ -1,0 +1,48 @@
+# 由 src/shared/builtin-themes.json 生成，请运行 node scripts/export-builtin-themes.mjs 更新。
+version: 1
+id: writer
+name: Writer
+appearance: light
+colors:
+  bg: '#fcfcfa'
+  text: '#1a1a1a'
+  textSecondary: '#757571'
+  textMuted: '#8e8e8a'
+  border: '#e9e9e5'
+  link: '#3b6ec4'
+  inlineCodeBackground: rgba(0, 0, 0, 0.05)
+  codeBlockBackground: '#f2f2ee'
+  codeBlockText: var(--text-color)
+  quoteBorder: '#1a1a1a'
+  quoteBackground: transparent
+  tableHeaderBackground: '#f2f2ee'
+  tableBorder: var(--border-color)
+  selection: rgba(59, 110, 196, 0.15)
+  highlight: '#fff3a3'
+typography:
+  fontFamily: "'SF Mono', 'JetBrains Mono', 'Fira Code', Menlo, Consolas, 'PingFang SC', 'Noto Sans SC', monospace"
+  fontSize: 15
+  baseLineHeight: 1.8
+styles:
+  heading1:
+    fontWeight: 700
+    borderStyle: none
+    spacingAfter: 0
+  heading2:
+    fontWeight: 700
+    borderStyle: none
+    spacingAfter: 0
+  heading3:
+    fontWeight: 700
+    borderStyle: none
+    spacingAfter: 0
+  quote:
+    fontStyle: normal
+    borderWidth: 3
+  inlineCode:
+    color: '#3b6ec4'
+  tableHeader:
+    fontSize: 0.9
+  tableCell:
+    fontSize: 0.9
+syntax: {}

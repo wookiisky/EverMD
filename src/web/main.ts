@@ -13,9 +13,9 @@
 
 import { createEditor, setMarkdown } from '../renderer/editor/editor'
 import { applyTheme } from '../renderer/themes/theme-manager'
+import { BUILTIN_THEMES } from '../shared/theme-definition'
 import { SAMPLES } from './sample'
 import '../renderer/themes/base.css'
-import '../renderer/themes/premium.css'
 import './web.css'
 
 type Lang = 'zh' | 'en'
@@ -25,22 +25,6 @@ const EMBED = new URLSearchParams(location.search).has('embed')
 // The web page uses the same thin scrollbars the desktop app uses off macOS:
 // the system overlay ones look heavy inside a window.
 document.body.classList.add('web-playground')
-
-// id, 中文名, English name. Same twelve themes as the desktop app.
-const THEMES: Array<[string, string, string]> = [
-  ['light', '浅色', 'Light'],
-  ['elegant', '雅致', 'Elegant'],
-  ['notion', '简白', 'Notion'],
-  ['writer', '作家', 'Writer'],
-  ['bear', '熊红', 'Bear'],
-  ['sepia', '羊皮纸', 'Sepia'],
-  ['dark', '深色', 'Dark'],
-  ['midnight', '午夜', 'Midnight'],
-  ['solarized-dark', '夜航', 'Solarized Dark'],
-  ['nord', '极地', 'Nord'],
-  ['gruvbox', '暖木', 'Gruvbox'],
-  ['dracula', '德古拉', 'Dracula']
-]
 
 const COPY = {
   zh: {
@@ -82,17 +66,17 @@ function initialLang(): Lang {
 
 function initialTheme(): string {
   const saved = localStorage.getItem(THEME_KEY)
-  return THEMES.some(([id]) => id === saved) ? (saved as string) : 'elegant'
+  return BUILTIN_THEMES.some(theme => theme.id === saved) ? (saved as string) : 'elegant'
 }
 
-function renderThemeSwitch(lang: Lang, active: string, onPick: (id: string) => void): void {
+function renderThemeSwitch(active: string, onPick: (id: string) => void): void {
   const host = document.getElementById('theme-switch') as HTMLElement
   host.textContent = ''
-  for (const [id, zh, en] of THEMES) {
+  for (const { id, name } of BUILTIN_THEMES) {
     const button = document.createElement('button')
     button.type = 'button'
     button.dataset.theme = id
-    button.textContent = lang === 'zh' ? zh : en
+    button.textContent = name
     button.setAttribute('aria-pressed', String(id === active))
     button.addEventListener('click', () => onPick(id))
     host.append(button)
@@ -131,14 +115,13 @@ function setTheme(id: string): void {
   theme = id
   applyTheme(id)
   localStorage.setItem(THEME_KEY, id)
-  renderThemeSwitch(lang, theme, setTheme)
+  renderThemeSwitch(theme, setTheme)
 }
 
 function setLang(next: Lang): void {
   lang = next
   localStorage.setItem(LANG_KEY, next)
   applyCopy(next)
-  renderThemeSwitch(next, theme, setTheme)
   setMarkdown(SAMPLES[next], true)
 }
 
@@ -177,7 +160,7 @@ window.addEventListener('message', (event) => {
 
 applyTheme(theme)
 applyCopy(lang)
-renderThemeSwitch(lang, theme, setTheme)
+renderThemeSwitch(theme, setTheme)
 setFull(full)
 
 async function boot(): Promise<void> {

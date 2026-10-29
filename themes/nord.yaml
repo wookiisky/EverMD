@@ -1,0 +1,32 @@
+# 由 src/shared/builtin-themes.json 生成，请运行 node scripts/export-builtin-themes.mjs 更新。
+version: 1
+id: nord
+name: Nord
+appearance: dark
+colors:
+  bg: '#2e3440'
+  text: '#d8dee9'
+  textSecondary: '#aebdd4'
+  textMuted: '#7d8ba1'
+  border: '#383e4e'
+  link: '#88c0d0'
+  inlineCodeBackground: rgba(136, 192, 208, 0.12)
+  codeBlockBackground: '#262c37'
+  codeBlockText: var(--text-color)
+  quoteBorder: '#81a1c1'
+  quoteBackground: transparent
+  tableHeaderBackground: '#3b4252'
+  tableBorder: var(--border-color)
+  selection: rgba(136, 192, 208, 0.2)
+  highlight: rgba(235, 203, 139, 0.25)
+typography: {}
+styles:
+  heading1:
+    color: '#eceff4'
+  heading2:
+    color: '#eceff4'
+  heading3:
+    color: '#eceff4'
+  inlineCode:
+    color: '#88c0d0'
+syntax: {}

@@ -1,0 +1,487 @@
+[
+  {
+    "version": 1,
+    "id": "light",
+    "name": "Light",
+    "appearance": "light",
+    "colors": {
+      "bg": "#ffffff",
+      "text": "#24292f",
+      "textSecondary": "#656d76",
+      "textMuted": "#656d76",
+      "border": "#dce1e6",
+      "link": "#0969da",
+      "inlineCodeBackground": "rgba(175, 184, 193, 0.2)",
+      "codeBlockBackground": "#f6f8fa",
+      "quoteBorder": "#d0d7de",
+      "tableHeaderBackground": "#f6f8fa",
+      "selection": "rgba(9, 105, 218, 0.15)",
+      "highlight": "#fff3bf",
+      "codeBlockText": "var(--text-color)",
+      "quoteBackground": "transparent",
+      "tableBorder": "var(--border-color)"
+    },
+    "typography": {},
+    "styles": {},
+    "syntax": {}
+  },
+  {
+    "version": 1,
+    "id": "elegant",
+    "name": "Elegant",
+    "appearance": "light",
+    "colors": {
+      "bg": "#f0edea",
+      "text": "#2c2c2c",
+      "textSecondary": "#6c6c6c",
+      "textMuted": "#777",
+      "border": "#dedad5",
+      "link": "#bc4424",
+      "inlineCodeBackground": "#e8e4df",
+      "codeBlockBackground": "#2c2c2c",
+      "quoteBorder": "#c44b2b",
+      "tableHeaderBackground": "#eae6e1",
+      "selection": "rgba(196, 75, 43, 0.2)",
+      "highlight": "#f0d9a8",
+      "codeBlockText": "#e0dcd7",
+      "quoteBackground": "#eae6e1",
+      "tableBorder": "var(--border-color)"
+    },
+    "typography": {
+      "fontFamily": "'LXGW WenKai', 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', Georgia, serif",
+      "baseLineHeight": 1.9
+    },
+    "styles": {
+      "inlineCode": {
+        "color": "#c44b2b"
+      },
+      "tableHeader": {
+        "sideBorders": false,
+        "borderWidth": 2,
+        "borderColor": "#c44b2b"
+      },
+      "tableCell": {
+        "sideBorders": false
+      }
+    },
+    "syntax": {}
+  },
+  {
+    "version": 1,
+    "id": "notion",
+    "name": "Notion",
+    "appearance": "light",
+    "colors": {
+      "bg": "#ffffff",
+      "text": "#37352f",
+      "textSecondary": "#777674",
+      "textMuted": "#9b9a97",
+      "border": "#eeeeed",
+      "link": "#37352f",
+      "inlineCodeBackground": "#f7f6f3",
+      "codeBlockBackground": "#f7f6f3",
+      "quoteBorder": "#37352f",
+      "tableHeaderBackground": "#f7f6f3",
+      "selection": "rgba(35, 131, 226, 0.14)",
+      "highlight": "#fdecc8",
+      "codeBlockText": "var(--text-color)",
+      "quoteBackground": "transparent",
+      "tableBorder": "var(--border-color)"
+    },
+    "typography": {},
+    "styles": {
+      "inlineCode": {
+        "color": "#eb5757",
+        "background": "#f7f6f3"
+      },
+      "heading1": {
+        "borderStyle": "none",
+        "spacingAfter": 0,
+        "fontWeight": 700
+      },
+      "heading2": {
+        "borderStyle": "none",
+        "spacingAfter": 0,
+        "fontWeight": 700
+      },
+      "tableHeader": {
+        "sideBorders": false
+      },
+      "tableCell": {
+        "sideBorders": false
+      },
+      "linkUrl": {
+        "color": "#9b9a97"
+      }
+    },
+    "syntax": {}
+  },
+  {
+    "version": 1,
+    "id": "writer",
+    "name": "Writer",
+    "appearance": "light",
+    "colors": {
+      "bg": "#fcfcfa",
+      "text": "#1a1a1a",
+      "textSecondary": "#757571",
+      "textMuted": "#8e8e8a",
+      "border": "#e9e9e5",
+      "link": "#3b6ec4",
+      "inlineCodeBackground": "rgba(0, 0, 0, 0.05)",
+      "codeBlockBackground": "#f2f2ee",
+      "quoteBorder": "#1a1a1a",
+      "tableHeaderBackground": "#f2f2ee",
+      "selection": "rgba(59, 110, 196, 0.15)",
+      "highlight": "#fff3a3",
+      "codeBlockText": "var(--text-color)",
+      "quoteBackground": "transparent",
+      "tableBorder": "var(--border-color)"
+    },
+    "typography": {
+      "fontFamily": "'SF Mono', 'JetBrains Mono', 'Fira Code', Menlo, Consolas, 'PingFang SC', 'Noto Sans SC', monospace",
+      "fontSize": 15,
+      "baseLineHeight": 1.8
+    },
+    "styles": {
+      "inlineCode": {
+        "color": "#3b6ec4"
+      },
+      "heading1": {
+        "borderStyle": "none",
+        "spacingAfter": 0,
+        "fontWeight": 700
+      },
+      "heading2": {
+        "borderStyle": "none",
+        "spacingAfter": 0,
+        "fontWeight": 700
+      },
+      "heading3": {
+        "borderStyle": "none",
+        "spacingAfter": 0,
+        "fontWeight": 700
+      },
+      "quote": {
+        "borderWidth": 3,
+        "fontStyle": "normal"
+      },
+      "tableHeader": {
+        "fontSize": 0.9
+      },
+      "tableCell": {
+        "fontSize": 0.9
+      }
+    },
+    "syntax": {}
+  },
+  {
+    "version": 1,
+    "id": "bear",
+    "name": "Bear",
+    "appearance": "light",
+    "colors": {
+      "bg": "#ffffff",
+      "text": "#262626",
+      "textSecondary": "#767676",
+      "textMuted": "#8a8a8a",
+      "border": "#eeecea",
+      "link": "#d43d2a",
+      "inlineCodeBackground": "rgba(212, 61, 42, 0.07)",
+      "codeBlockBackground": "#2e2a28",
+      "quoteBorder": "#d43d2a",
+      "tableHeaderBackground": "#f7f5f3",
+      "selection": "rgba(212, 61, 42, 0.12)",
+      "highlight": "#ffe9a8",
+      "codeBlockText": "#efe9e4",
+      "quoteBackground": "transparent",
+      "tableBorder": "var(--border-color)"
+    },
+    "typography": {},
+    "styles": {
+      "inlineCode": {
+        "color": "#d43d2a"
+      },
+      "heading1": {
+        "letterSpacing": -0.01
+      },
+      "horizontalRule": {
+        "borderColor": "#d43d2a",
+        "opacity": 0.35
+      }
+    },
+    "syntax": {}
+  },
+  {
+    "version": 1,
+    "id": "sepia",
+    "name": "Sepia",
+    "appearance": "light",
+    "colors": {
+      "bg": "#f6efe0",
+      "text": "#4f4032",
+      "textSecondary": "#7b6b54",
+      "textMuted": "#9a8a72",
+      "border": "#e7ddc7",
+      "link": "#9c5e29",
+      "inlineCodeBackground": "rgba(122, 90, 51, 0.1)",
+      "codeBlockBackground": "#ece2cb",
+      "quoteBorder": "#c9a86a",
+      "tableHeaderBackground": "#ece2cb",
+      "selection": "rgba(160, 98, 45, 0.15)",
+      "highlight": "#f2dfa8",
+      "quoteBackground": "#efe6d0",
+      "codeBlockText": "var(--text-color)",
+      "tableBorder": "var(--border-color)"
+    },
+    "typography": {
+      "fontFamily": "Georgia, 'Source Han Serif SC', 'Noto Serif SC', 'Songti SC', serif",
+      "baseLineHeight": 1.85
+    },
+    "styles": {
+      "inlineCode": {
+        "color": "#7a5a33"
+      },
+      "heading1": {
+        "textAlign": "center",
+        "borderStyle": "none",
+        "letterSpacing": 0.02
+      },
+      "heading2": {
+        "borderStyle": "dashed"
+      }
+    },
+    "syntax": {}
+  },
+  {
+    "version": 1,
+    "id": "dark",
+    "name": "Dark",
+    "appearance": "dark",
+    "colors": {
+      "bg": "#0d1117",
+      "text": "#e6edf3",
+      "textSecondary": "#aab3bd",
+      "textMuted": "#8b949e",
+      "border": "#272d34",
+      "link": "#58a6ff",
+      "inlineCodeBackground": "rgba(110, 118, 129, 0.3)",
+      "codeBlockBackground": "#161b22",
+      "quoteBorder": "#30363d",
+      "tableHeaderBackground": "#161b22",
+      "selection": "rgba(88, 166, 255, 0.2)",
+      "highlight": "rgba(210, 153, 34, 0.35)",
+      "codeBlockText": "var(--text-color)",
+      "quoteBackground": "transparent",
+      "tableBorder": "var(--border-color)"
+    },
+    "typography": {},
+    "styles": {
+      "inlineCode": {
+        "color": "#ff7b72"
+      }
+    },
+    "syntax": {}
+  },
+  {
+    "version": 1,
+    "id": "gruvbox",
+    "name": "Gruvbox",
+    "appearance": "dark",
+    "colors": {
+      "bg": "#282828",
+      "text": "#ebdbb2",
+      "textSecondary": "#c5b5a5",
+      "textMuted": "#928374",
+      "border": "#373432",
+      "link": "#83a598",
+      "inlineCodeBackground": "rgba(235, 219, 178, 0.1)",
+      "codeBlockBackground": "#1d2021",
+      "quoteBorder": "#fe8019",
+      "tableHeaderBackground": "#3c3836",
+      "selection": "rgba(254, 128, 25, 0.2)",
+      "highlight": "rgba(250, 189, 47, 0.22)",
+      "codeBlockText": "var(--text-color)",
+      "quoteBackground": "transparent",
+      "tableBorder": "var(--border-color)"
+    },
+    "typography": {},
+    "styles": {
+      "inlineCode": {
+        "color": "#b8bb26"
+      },
+      "heading1": {
+        "color": "#fbf1c7"
+      },
+      "heading2": {
+        "color": "#fbf1c7"
+      },
+      "heading3": {
+        "color": "#fbf1c7"
+      },
+      "horizontalRule": {
+        "borderColor": "#504945"
+      }
+    },
+    "syntax": {}
+  },
+  {
+    "version": 1,
+    "id": "midnight",
+    "name": "Midnight",
+    "appearance": "dark",
+    "colors": {
+      "bg": "#000000",
+      "text": "#d6d6d6",
+      "textSecondary": "#b1b1b1",
+      "textMuted": "#7a7a7a",
+      "border": "#1c1c1c",
+      "link": "#0a84ff",
+      "inlineCodeBackground": "rgba(255, 255, 255, 0.08)",
+      "codeBlockBackground": "#111111",
+      "quoteBorder": "#3a3a3a",
+      "tableHeaderBackground": "#111111",
+      "selection": "rgba(10, 132, 255, 0.28)",
+      "highlight": "rgba(255, 214, 10, 0.25)",
+      "codeBlockText": "var(--text-color)",
+      "quoteBackground": "transparent",
+      "tableBorder": "var(--border-color)"
+    },
+    "typography": {},
+    "styles": {
+      "inlineCode": {
+        "color": "#e5786d"
+      },
+      "heading1": {
+        "color": "#f5f5f5"
+      },
+      "heading2": {
+        "color": "#f5f5f5"
+      },
+      "heading3": {
+        "color": "#f5f5f5"
+      }
+    },
+    "syntax": {}
+  },
+  {
+    "version": 1,
+    "id": "solarized-dark",
+    "name": "Solarized Dark",
+    "appearance": "dark",
+    "colors": {
+      "bg": "#002b36",
+      "text": "#c2d5d7",
+      "textSecondary": "#a4bbc3",
+      "textMuted": "#586e75",
+      "border": "#0a3845",
+      "link": "#3093da",
+      "inlineCodeBackground": "rgba(88, 110, 117, 0.22)",
+      "codeBlockBackground": "#073642",
+      "quoteBorder": "#2aa198",
+      "tableHeaderBackground": "#073642",
+      "selection": "rgba(38, 139, 210, 0.25)",
+      "highlight": "rgba(181, 137, 0, 0.3)",
+      "codeBlockText": "var(--text-color)",
+      "quoteBackground": "transparent",
+      "tableBorder": "var(--border-color)"
+    },
+    "typography": {},
+    "styles": {
+      "inlineCode": {
+        "color": "#2aa198"
+      },
+      "heading1": {
+        "color": "#93a1a1"
+      },
+      "heading2": {
+        "color": "#93a1a1"
+      },
+      "heading3": {
+        "color": "#93a1a1"
+      },
+      "heading4": {
+        "color": "#93a1a1"
+      }
+    },
+    "syntax": {}
+  },
+  {
+    "version": 1,
+    "id": "nord",
+    "name": "Nord",
+    "appearance": "dark",
+    "colors": {
+      "bg": "#2e3440",
+      "text": "#d8dee9",
+      "textSecondary": "#aebdd4",
+      "textMuted": "#7d8ba1",
+      "border": "#383e4e",
+      "link": "#88c0d0",
+      "inlineCodeBackground": "rgba(136, 192, 208, 0.12)",
+      "codeBlockBackground": "#262c37",
+      "quoteBorder": "#81a1c1",
+      "tableHeaderBackground": "#3b4252",
+      "selection": "rgba(136, 192, 208, 0.2)",
+      "highlight": "rgba(235, 203, 139, 0.25)",
+      "codeBlockText": "var(--text-color)",
+      "quoteBackground": "transparent",
+      "tableBorder": "var(--border-color)"
+    },
+    "typography": {},
+    "styles": {
+      "inlineCode": {
+        "color": "#88c0d0"
+      },
+      "heading1": {
+        "color": "#eceff4"
+      },
+      "heading2": {
+        "color": "#eceff4"
+      },
+      "heading3": {
+        "color": "#eceff4"
+      }
+    },
+    "syntax": {}
+  },
+  {
+    "version": 1,
+    "id": "dracula",
+    "name": "Dracula",
+    "appearance": "dark",
+    "colors": {
+      "bg": "#282a36",
+      "text": "#f8f8f2",
+      "textSecondary": "#afb7db",
+      "textMuted": "#7f86a8",
+      "border": "#3d4051",
+      "link": "#bd93f9",
+      "inlineCodeBackground": "rgba(98, 114, 164, 0.2)",
+      "codeBlockBackground": "#21222c",
+      "quoteBorder": "#ff79c6",
+      "tableHeaderBackground": "#343746",
+      "selection": "rgba(189, 147, 249, 0.25)",
+      "highlight": "rgba(241, 250, 140, 0.22)",
+      "codeBlockText": "var(--text-color)",
+      "quoteBackground": "transparent",
+      "tableBorder": "var(--border-color)"
+    },
+    "typography": {},
+    "styles": {
+      "inlineCode": {
+        "color": "#8be9fd"
+      },
+      "heading1": {
+        "color": "#ffffff"
+      },
+      "heading2": {
+        "color": "#ffffff"
+      },
+      "heading3": {
+        "color": "#ffffff"
+      }
+    },
+    "syntax": {}
+  }
+]

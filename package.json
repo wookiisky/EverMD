@@ -24,6 +24,10 @@
     "build:web": "vite build --config vite.web.config.ts",
     "preview:web": "vite preview --config vite.web.config.ts",
     "check:theme-colors": "node scripts/check-theme-colors.mjs",
+    "export:themes": "node scripts/export-builtin-themes.mjs",
+    "check:theme-files": "node scripts/export-builtin-themes.mjs --check",
+    "verify:theme-definition": "node scripts/verify-theme-definition.mjs",
+    "verify:theme-settings": "node scripts/verify-theme-settings.mjs",
     "verify:markdown": "node scripts/verify-markdown.mjs",
     "verify:emphasis": "node scripts/verify-emphasis.mjs",
     "verify:docx-emphasis": "node scripts/verify-docx-emphasis.mjs",
@@ -41,6 +45,7 @@
     "verify:image-export": "node scripts/verify-image-export.mjs",
     "verify:export-pdf": "node scripts/verify-export-pdf.mjs",
     "verify:themes": "node scripts/verify-themes.mjs",
+    "verify:theme-storage": "node scripts/verify-theme-storage.mjs",
     "verify:sidebar-preferences": "node scripts/verify-sidebar-preferences.mjs",
     "verify:sidebars": "node scripts/verify-sidebars.mjs",
     "verify:navigation-history": "node scripts/verify-navigation-history.mjs",
@@ -71,7 +76,8 @@
     "pele": "^1.6.0",
     "remark-gfm": "^4.0.1",
     "remark-parse": "^11.0.0",
-    "unified": "^11.0.5"
+    "unified": "^11.0.5",
+    "yaml": "^2.9.1"
   },
   "devDependencies": {
     "@types/katex": "^0.16.8",

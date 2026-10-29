@@ -1,0 +1,34 @@
+# 由 src/shared/builtin-themes.json 生成，请运行 node scripts/export-builtin-themes.mjs 更新。
+version: 1
+id: solarized-dark
+name: Solarized Dark
+appearance: dark
+colors:
+  bg: '#002b36'
+  text: '#c2d5d7'
+  textSecondary: '#a4bbc3'
+  textMuted: '#586e75'
+  border: '#0a3845'
+  link: '#3093da'
+  inlineCodeBackground: rgba(88, 110, 117, 0.22)
+  codeBlockBackground: '#073642'
+  codeBlockText: var(--text-color)
+  quoteBorder: '#2aa198'
+  quoteBackground: transparent
+  tableHeaderBackground: '#073642'
+  tableBorder: var(--border-color)
+  selection: rgba(38, 139, 210, 0.25)
+  highlight: rgba(181, 137, 0, 0.3)
+typography: {}
+styles:
+  heading1:
+    color: '#93a1a1'
+  heading2:
+    color: '#93a1a1'
+  heading3:
+    color: '#93a1a1'
+  heading4:
+    color: '#93a1a1'
+  inlineCode:
+    color: '#2aa198'
+syntax: {}

@@ -8,7 +8,9 @@ import { isPresenting, startSlideshow, stopSlideshow } from './slideshow'
 import { enterPrintLayout, exitPrintLayout } from './slides-export'
 import { enterPaperLayout, exitPaperLayout } from './print-layout'
 import { SearchPanel } from './editor/search-panel'
-import { applyTheme, loadSavedTheme } from './themes/theme-manager'
+import { applyTheme, loadSavedTheme, getCurrentThemeDefinition, getThemeDefinitions, setThemeDefinitions, registerThemeDefinition } from './themes/theme-manager'
+import { showThemeSettingsPanel } from './themes/theme-settings-panel'
+import type { ThemeDefinition } from '../shared/theme-config'
 import { setUiLanguage, isChinese, type UiLanguage } from './ui-language'
 import { Sidebars } from './sidebars'
 import { DocumentOutline, sameOutlineLabels, type OutlineItem } from './document-outline'
@@ -23,9 +25,9 @@ import type { NavigationAnchor } from './navigation-history'
 import type { SidebarSide } from '../shared/sidebar-config'
 import { applyEditorFont, clearEditorFont, loadSavedEditorFont, resetEditorFontSize, showFontSettingsModal, stepEditorFontSize } from './editor/font-settings'
 import './themes/base.css'
-import './themes/premium.css'
 import './themes/editor-preview.css'
 import './themes/document.css'
+import './themes/theme-settings.css'
 
 let sourceModeActive = false
 const editorEl = () => document.getElementById('editor') as HTMLElement
@@ -1740,12 +1742,18 @@ async function init(): Promise<void> {
   const [language, manager] = await Promise.all([api.getLanguage(), api.getFileManagerName()])
   fileManagerName = manager
   setUiLanguage(language)
+  setThemeDefinitions(await api.listThemeDefinitions())
   const savedTheme = loadSavedTheme()
   if (savedTheme.startsWith('custom:')) {
-    // Load before applying: a newly opened window must not briefly paint the
-    // custom class without its stylesheet. Missing files self-heal to elegant.
-    const css = await api.loadThemeCSS(savedTheme.slice(7))
-    applyWindowTheme(css ? savedTheme : 'elegant', css ?? undefined)
+    // 旧选择按文件身份恢复，避免同内容 CSS 或已编辑的迁移主题互相冒用。
+    const fileName = savedTheme.slice(7)
+    const migratedId = await api.resolveLegacyThemeId(fileName)
+    if (migratedId) applyWindowTheme(migratedId)
+    else {
+      // 迁移失败时仍支持原 CSS；原文件缺失则回到内置主题。
+      const css = await api.loadThemeCSS(fileName)
+      applyWindowTheme(css ? savedTheme : 'elegant', css ?? undefined)
+    }
   } else {
     applyWindowTheme(savedTheme)
   }
@@ -2000,6 +2008,18 @@ async function init(): Promise<void> {
   }
 
   api.onSetTheme((theme) => applyWindowTheme(theme))
+  api.onThemeDefinitionsChanged((definitions) => {
+    const active = getCurrentThemeDefinition()
+    setThemeDefinitions(definitions)
+    const updated = getThemeDefinitions().find(theme => theme.id === active.id)
+    if (JSON.stringify(updated) !== JSON.stringify(active)) applyWindowTheme(active.id)
+  })
+  api.onMenuThemeSettings(() => showThemeSettingsPanel())
+  document.addEventListener('theme-saved', (event) => {
+    const theme = (event as CustomEvent<ThemeDefinition>).detail
+    registerThemeDefinition(theme)
+    applyWindowTheme(theme.id)
+  })
 
   api.onSetPageWidth((width) => applyPageWidth(width))
 
@@ -2044,8 +2064,9 @@ async function init(): Promise<void> {
   })
 
   api.onMenuImportTheme(async () => {
-    const result = await api.loadCustomTheme()
-    if (result) applyWindowTheme(`custom:${result.name}`, result.css)
+    // 同一导入入口提供草稿和本地化错误，不自动覆盖已保存主题。
+    showThemeSettingsPanel()
+    document.querySelector<HTMLButtonElement>("[data-theme-action='import']")?.click()
   })
 
   // --- Auto update banner (weak, non-blocking) ---

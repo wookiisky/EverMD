@@ -136,7 +136,7 @@
   line-height: calc(1lh * var(--md-table-scale));
   padding-top: calc(8px + 1lh * (1 / var(--md-table-scale) - 1) / 2);
   padding-bottom: calc(8px + 1lh * (1 / var(--md-table-scale) - 1) / 2);
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--table-border, var(--border-color));
 }
 
 .colamd-document th {

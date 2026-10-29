@@ -6,8 +6,8 @@
  * 两条规矩（design.md）：
  *   1. 颜色一律用主题已有的变量（--text-color、--border-color、--code-bg、
  *      --code-block-bg、--blockquote-border、--table-header-bg、--link-color、
- *      --highlight-bg、--selection-bg），不新造一层颜色变量。主题之间剩下的差别
- *      用 `body.theme-x .cm-content ...` 直接写，跟旧版一样，一眼能看全。
+ *      --highlight-bg、--selection-bg）。主题之间的差别由结构化主题配置生成，
+ *      此处只维护所有主题共用的默认排版。
  *   2. 交给源码模式的颜色与这里共用同一批变量，两种视图看起来才是一套东西。
  *
  * 选择器的写法有讲究，不是风格问题：
@@ -347,7 +347,7 @@
 .cm-content .cm-md-table-widget th,
 .cm-content .cm-md-table-widget td {
   --md-table-scale: 0.81;
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--table-border, var(--border-color));
   padding: 8px 12px;
   /* 复用主题原有的行高倍率，让单元格字号自然参与计算；补偿只保留首尾留白。 */
   line-height: calc(var(--md-body-line-height) * var(--md-table-scale));
@@ -634,133 +634,6 @@ body.exporting .cm-content .cm-md-frontmatter {
   border-radius: 6px;
   padding: 0.8em 1em;
   white-space: pre-wrap;
-}
-
-/* ======= 各主题的差别 ======= */
-
-/* 正文字体与行高 */
-body.theme-elegant .cm-content {
-  font-family: 'LXGW WenKai', 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', Georgia, serif;
-  --md-body-line-height: 1.9;
-}
-
-body.theme-sepia .cm-content {
-  font-family: Georgia, 'Source Han Serif SC', 'Noto Serif SC', 'Songti SC', serif;
-  --md-body-line-height: 1.85;
-}
-
-body.theme-writer .cm-content {
-  font-family: 'SF Mono', 'JetBrains Mono', 'Fira Code', Menlo, Consolas, 'PingFang SC', 'Noto Sans SC', monospace;
-  font-size: 15px;
-  --md-body-line-height: 1.8;
-}
-
-/* 加粗的颜色 */
-
-/* 行内代码的字色 */
-body.theme-elegant .cm-content .cm-md-inlinecode { color: #c44b2b; }
-body.theme-sepia .cm-content .cm-md-inlinecode { color: #7a5a33; }
-body.theme-notion .cm-content .cm-md-inlinecode { color: #eb5757; background: #f7f6f3; }
-body.theme-bear .cm-content .cm-md-inlinecode { color: #d43d2a; }
-body.theme-solarized-dark .cm-content .cm-md-inlinecode { color: #2aa198; }
-body.theme-nord .cm-content .cm-md-inlinecode { color: #88c0d0; }
-body.theme-gruvbox .cm-content .cm-md-inlinecode { color: #b8bb26; }
-body.theme-dracula .cm-content .cm-md-inlinecode { color: #8be9fd; }
-body.theme-dark .cm-content .cm-md-inlinecode { color: #ff7b72; }
-body.theme-midnight .cm-content .cm-md-inlinecode { color: #e5786d; }
-body.theme-writer .cm-content .cm-md-inlinecode { color: #3b6ec4; }
-
-/* 标题的颜色 */
-body.theme-solarized-dark .cm-content .cm-md-atxheading1,
-body.theme-solarized-dark .cm-content .cm-md-atxheading2,
-body.theme-solarized-dark .cm-content .cm-md-atxheading3,
-body.theme-solarized-dark .cm-content .cm-md-atxheading4 { color: #93a1a1; }
-
-body.theme-nord .cm-content .cm-md-atxheading1,
-body.theme-nord .cm-content .cm-md-atxheading2,
-body.theme-nord .cm-content .cm-md-atxheading3 { color: #eceff4; }
-
-body.theme-gruvbox .cm-content .cm-md-atxheading1,
-body.theme-gruvbox .cm-content .cm-md-atxheading2,
-body.theme-gruvbox .cm-content .cm-md-atxheading3 { color: #fbf1c7; }
-
-body.theme-dracula .cm-content .cm-md-atxheading1,
-body.theme-dracula .cm-content .cm-md-atxheading2,
-body.theme-dracula .cm-content .cm-md-atxheading3 { color: #ffffff; }
-
-body.theme-midnight .cm-content .cm-md-atxheading1,
-body.theme-midnight .cm-content .cm-md-atxheading2,
-body.theme-midnight .cm-content .cm-md-atxheading3 { color: #f5f5f5; }
-
-/* 标题的下划线：Notion 与 Writer 不要，羊皮纸 h1 居中、h2 虚线。 */
-body.theme-notion .cm-content .cm-md-atxheading1,
-body.theme-notion .cm-content .cm-md-atxheading2,
-body.theme-writer .cm-content .cm-md-atxheading1,
-body.theme-writer .cm-content .cm-md-atxheading2,
-body.theme-writer .cm-content .cm-md-atxheading3 {
-  border-bottom: none;
-  padding-bottom: 0;
-}
-
-body.theme-notion .cm-content .cm-md-atxheading1,
-body.theme-notion .cm-content .cm-md-atxheading2,
-body.theme-writer .cm-content .cm-md-atxheading1,
-body.theme-writer .cm-content .cm-md-atxheading2,
-body.theme-writer .cm-content .cm-md-atxheading3 {
-  font-weight: 700;
-}
-
-body.theme-sepia .cm-content .cm-md-atxheading1 {
-  text-align: center;
-  border-bottom: none;
-  letter-spacing: 0.02em;
-}
-
-body.theme-sepia .cm-content .cm-md-atxheading2 {
-  border-bottom-style: dashed;
-}
-
-body.theme-bear .cm-content .cm-md-atxheading1 {
-  letter-spacing: -0.01em;
-}
-
-/* 引用块 */
-body.theme-writer .cm-content .cm-md-blockquote {
-  border-left-width: 3px;
-  font-style: normal;
-}
-
-/* 表格 */
-body.theme-elegant .cm-content .cm-md-table-widget th,
-body.theme-elegant .cm-content .cm-md-table-widget td,
-body.theme-notion .cm-content .cm-md-table-widget th,
-body.theme-notion .cm-content .cm-md-table-widget td {
-  border-left: none;
-  border-right: none;
-}
-
-body.theme-elegant .cm-content .cm-md-table-widget th {
-  border-bottom: 2px solid #c44b2b;
-}
-
-body.theme-writer .cm-content .cm-md-table-widget th,
-body.theme-writer .cm-content .cm-md-table-widget td {
-  font-size: 0.9em;
-}
-
-/* 分隔线 */
-body.theme-bear .cm-content .cm-md-hr {
-  border-top-color: #d43d2a;
-  opacity: 0.35;
-}
-
-body.theme-gruvbox .cm-content .cm-md-hr {
-  border-top-color: #504945;
-}
-
-/* 链接 */
-body.theme-notion .cm-content .cm-md-url {
-  color: #9b9a97;
 }
 
 /* 属性区收起后留下的那一行空壳：压成零高，顶上就不会多出一条空白（见 live-preview

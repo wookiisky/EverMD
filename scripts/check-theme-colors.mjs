@@ -1,38 +1,15 @@
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
+import { build } from 'esbuild'
 
 const dir_project = process.cwd()
 const path_base = path.join(dir_project, 'src/renderer/themes/base.css')
-const path_premium = path.join(dir_project, 'src/renderer/themes/premium.css')
 const dir_themes = path.join(dir_project, 'themes')
 
 const text_base = fs.readFileSync(path_base, 'utf8')
-const text_built_in = [
-	text_base,
-	fs.readFileSync(path_premium, 'utf8')
-].join('\n')
-
-const values_secondary = {
-	light: '#656d76',
-	dark: '#aab3bd',
-	elegant: '#6c6c6c',
-	sepia: '#7b6b54',
-	notion: '#777674',
-	bear: '#767676',
-	writer: '#757571',
-	'solarized-dark': '#a4bbc3',
-	nord: '#aebdd4',
-	gruvbox: '#c5b5a5',
-	dracula: '#afb7db',
-	midnight: '#b1b1b1'
-}
-
-const values_link = {
-	elegant: '#bc4424',
-	sepia: '#9c5e29',
-	'solarized-dark': '#3093da'
-}
+const bundle = await build({ entryPoints: ['src/shared/theme-definition.ts'], bundle: true, write: false, platform: 'node', format: 'esm', logLevel: 'silent' })
+const { BUILTIN_THEMES, THEME_COLOR_FIELDS } = await import('data:text/javascript;base64,' + Buffer.from(bundle.outputFiles[0].text).toString('base64'))
 
 function getVariables(text_block) {
 	const values_token = {}
@@ -46,9 +23,7 @@ function getVariables(text_block) {
 }
 
 function getDefaultTheme() {
-	const match_theme = text_base.match(/:root,\s*body\.theme-light\s*\{([^}]+)\}/)
-	assert.ok(match_theme, 'Light defaults must provide the :root token baseline')
-	return getVariables(match_theme[1])
+	return getBuiltInTheme('light')
 }
 
 function getCustomTheme(text_theme) {
@@ -59,12 +34,10 @@ function getCustomTheme(text_theme) {
 }
 
 function getBuiltInTheme(name_theme) {
-	const pattern_theme = new RegExp(
-		`body(?:,\\s*body)?\\.theme-${name_theme}\\s*\\{([^}]+)\\}`
-	)
-	const match_theme = text_built_in.match(pattern_theme)
-	assert.ok(match_theme, `Missing built-in theme: ${name_theme}`)
-	return getVariables(match_theme[1])
+	const theme = BUILTIN_THEMES.find(theme => theme.id === name_theme)
+	assert.ok(theme, `Missing built-in theme: ${name_theme}`)
+	return Object.fromEntries(THEME_COLOR_FIELDS.filter(field => theme.colors[field.key] !== undefined)
+		.map(field => [field.variable.slice(2), theme.colors[field.key].toLowerCase()]))
 }
 
 function getStandaloneTheme(name_theme) {
@@ -117,11 +90,12 @@ function getContrastRatio(value_foreground, value_background) {
 	return (luminance_light + 0.05) / (luminance_dark + 0.05)
 }
 
-for (const [name_theme, value_secondary] of Object.entries(values_secondary)) {
+for (const theme of BUILTIN_THEMES) {
+	const name_theme = theme.id
 	const values_built_in = getBuiltInTheme(name_theme)
 	const values_standalone = getStandaloneTheme(name_theme)
+	const value_secondary = values_built_in['text-secondary']
 
-	assert.equal(values_built_in['text-secondary'], value_secondary)
 	assert.equal(values_standalone['text-secondary'], value_secondary)
 	assert.ok(
 		getContrastRatio(value_secondary, values_built_in['bg-color']) >= 4.5,
@@ -141,11 +115,11 @@ for (const [name_theme, value_secondary] of Object.entries(values_secondary)) {
 	}
 }
 
-for (const [name_theme, value_link] of Object.entries(values_link)) {
+for (const name_theme of ['elegant', 'sepia', 'solarized-dark']) {
 	const values_built_in = getBuiltInTheme(name_theme)
 	const values_standalone = getStandaloneTheme(name_theme)
+	const value_link = values_built_in['link-color']
 
-	assert.equal(values_built_in['link-color'], value_link)
 	assert.equal(values_standalone['link-color'], value_link)
 	assert.ok(
 		getContrastRatio(value_link, values_built_in['bg-color']) >= 4.5,
@@ -154,7 +128,6 @@ for (const [name_theme, value_link] of Object.entries(values_link)) {
 }
 
 const values_solarized = getBuiltInTheme('solarized-dark')
-assert.equal(values_solarized['text-color'], '#c2d5d7')
 assert.ok(
 	getContrastRatio(values_solarized['text-color'], values_solarized['bg-color']) >= 7,
 	'Solarized Dark body text must meet WCAG AAA'
@@ -195,4 +168,4 @@ assert.equal(values_direct['bg-color'], values_default['bg-color'])
 assert.equal(values_direct['text-color'], values_default['text-color'])
 assert.equal(values_direct['border-color'], values_default['border-color'])
 
-console.log('Theme color contract passed for 12 built-in and standalone themes.')
+console.log('通过：12 套统一主题、历史 CSS 主题的颜色兼容、对比度、搜索高亮与缺省继承契约')

@@ -554,7 +554,7 @@ body.panel-motion-ready #editor-region {
   z-index: 5;
   display: flex;
   flex-direction: column;
-  background: var(--bg-color);
+  background: var(--sidebar-bg, var(--bg-color));
   overflow-y: auto;
   padding: 10px 8px;
   opacity: 0;
@@ -845,59 +845,7 @@ body.panel-resizing #editor-region { transition: none; }
    CodeMirror 不产出这些元素，规则已整片搬到 themes/editor-preview.css 的 `.cm-md-*`
    行类与 mark 类上。删掉而不是留着：留着的死选择器会让下一个人照它改样式，改不动又找不到原因。 */
 
-/* ======= THEMES ======= */
-
-:root, body.theme-light {
-  --bg-color: #ffffff;
-  --text-color: #24292f;
-  --text-secondary: #656d76;
-  --text-muted: #656d76;
-  --border-color: #dce1e6;
-  --link-color: #0969da;
-  --code-bg: rgba(175, 184, 193, 0.2);
-  --code-block-bg: #f6f8fa;
-  --blockquote-border: #d0d7de;
-  --table-header-bg: #f6f8fa;
-  --selection-bg: rgba(9, 105, 218, 0.15);
-  --highlight-bg: #fff3bf;
-}
-
-body.theme-dark {
-  --bg-color: #0d1117;
-  --text-color: #e6edf3;
-  --text-secondary: #aab3bd;
-  --text-muted: #8b949e;
-  --border-color: #272d34;
-  --link-color: #58a6ff;
-  --code-bg: rgba(110, 118, 129, 0.3);
-  --code-block-bg: #161b22;
-  --blockquote-border: #30363d;
-  --table-header-bg: #161b22;
-  --selection-bg: rgba(88, 166, 255, 0.2);
-  --highlight-bg: rgba(210, 153, 34, 0.35);
-}
-
-body.theme-elegant {
-  --bg-color: #f0edea;
-  --text-color: #2c2c2c;
-  --text-secondary: #6c6c6c;
-  --text-muted: #777;
-  --border-color: #dedad5;
-  --link-color: #bc4424;
-  --code-bg: #e8e4df;
-  --code-block-bg: #2c2c2c;
-  --code-block-text: #e0dcd7;
-  --blockquote-border: #c44b2b;
-  --blockquote-bg: #eae6e1;
-  --table-header-bg: #eae6e1;
-  --table-border: #d8d3ce;
-  --selection-bg: rgba(196, 75, 43, 0.2);
-  --highlight-bg: #f0d9a8;
-}
-
-/* elegant 的正文排版（字体、加粗色、行内代码色、代码块字色、引用底色、表格线）
-   已搬到 themes/editor-preview.css：主题在那边只用覆盖 --md-* 变量和几条表格规则，
-   一处写完，不用每个主题在 base 里再分一段。 */
+/* 各主题的颜色和专属排版由结构化主题配置统一生成。 */
 
 /* Scrollbar: macOS keeps its native overlay bars, which are drawn while you
    scroll, take no layout space and are absent the rest of the time. Only Windows

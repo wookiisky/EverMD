@@ -2,6 +2,12 @@ import { contextBridge, ipcRenderer, webUtils } from 'electron'
 import type { SidebarContent, SidebarPreferences, SidebarSide } from '../shared/sidebar-config'
 import type { NavigationFileResult, NavigationMenuState } from '../shared/navigation-config'
 import type { DocumentCloseChoice, DocumentCloseRequest } from '../shared/document-close-config'
+import type { ThemeDefinition, ThemeDraftRecoveryResult } from '../shared/theme-config'
+
+/** 文件操作失败与用户取消分开，界面可以保留未保存草稿。 */
+export type ThemeFileResult = { ok: true; canceled?: boolean } | { ok: false; error: string }
+/** 导入只生成草稿，确认后才保存到主题库。 */
+export type ThemeDefinitionResult = { ok: true; theme: ThemeDefinition } | { ok: false; error: string }
 
 export interface SiblingFile {
   name: string
@@ -59,6 +65,16 @@ export interface ElectronAPI {
   onLanguageChanged: (callback: (language: 'zh' | 'en') => void) => void
   loadCustomTheme: () => Promise<{ name: string; css: string } | null>
   loadThemeCSS: (fileName: string) => Promise<string | null>
+  resolveLegacyThemeId: (fileName: string) => Promise<string | null>
+  listThemeDefinitions: () => Promise<ThemeDefinition[]>
+  saveThemeDefinition: (theme: ThemeDefinition) => Promise<ThemeDefinitionResult>
+  /** 切换前保存恢复副本，保留尚未通过校验的字段原文。 */
+  recoverThemeDraft: (theme: ThemeDefinition, invalidFields: Record<string, string>) => Promise<ThemeDraftRecoveryResult>
+  deleteThemeDefinition: (id: string) => Promise<ThemeFileResult>
+  importThemeFile: () => Promise<ThemeDefinitionResult | null>
+  exportThemeDefinition: (theme: ThemeDefinition, format: 'yaml' | 'json') => Promise<ThemeFileResult>
+  onThemeDefinitionsChanged: (callback: (themes: ThemeDefinition[]) => void) => void
+  onMenuThemeSettings: (callback: () => void) => void
   reportTheme: (theme: string) => Promise<void>
   reportTitlebarColors: (colors: { background: string; symbol: string }) => Promise<void>
   popupAppMenu: () => Promise<void>
@@ -167,6 +183,19 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
   loadCustomTheme: () => ipcRenderer.invoke('load-custom-theme'),
   loadThemeCSS: (fileName: string) => ipcRenderer.invoke('load-theme-css', fileName),
+  resolveLegacyThemeId: (fileName: string) => ipcRenderer.invoke('resolve-legacy-theme-id', fileName),
+  listThemeDefinitions: () => ipcRenderer.invoke('list-theme-definitions'),
+  saveThemeDefinition: (theme: ThemeDefinition) => ipcRenderer.invoke('save-theme-definition', theme),
+  recoverThemeDraft: (theme: ThemeDefinition, invalidFields: Record<string, string>) => ipcRenderer.invoke('recover-theme-draft', theme, invalidFields),
+  deleteThemeDefinition: (id: string) => ipcRenderer.invoke('delete-theme-definition', id),
+  importThemeFile: () => ipcRenderer.invoke('import-theme-file'),
+  exportThemeDefinition: (theme: ThemeDefinition, format: 'yaml' | 'json') => ipcRenderer.invoke('export-theme-definition', theme, format),
+  onThemeDefinitionsChanged: (callback: (themes: ThemeDefinition[]) => void) => {
+    ipcRenderer.on('theme-definitions-changed', (_event, themes: ThemeDefinition[]) => callback(themes))
+  },
+  onMenuThemeSettings: (callback: () => void) => {
+    ipcRenderer.on('menu-theme-settings', () => callback())
+  },
   reportTheme: (theme: string) => ipcRenderer.invoke('report-theme', theme),
   reportSidebars: (preferences: SidebarPreferences) => ipcRenderer.invoke('report-sidebars', preferences),
   reportPageWidth: (width: string) => ipcRenderer.invoke('report-page-width', width),

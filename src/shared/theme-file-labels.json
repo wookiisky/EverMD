@@ -1,0 +1,28 @@
+{
+  "zh": {
+    "settings": "主题详细设置...",
+    "importTitle": "导入主题",
+    "importFilter": "主题文件",
+    "exportTitle": "导出主题",
+    "saveFailed": "主题保存失败，请检查存储目录是否可写。",
+    "deleteFailed": "主题恢复失败，请检查存储目录是否可写。",
+    "importFailed": "主题导入失败，请检查文件格式、配置字段和版本。",
+    "exportFailed": "主题导出失败，请检查配置和目标目录是否可写。",
+    "invalidFormat": "请选择 YAML 或 JSON 格式。",
+    "invalidField": "主题字段 {path} 的值或类型不受支持。",
+    "invalidVersion": "此主题的格式版本不受支持。"
+  },
+  "en": {
+    "settings": "Theme Settings...",
+    "importTitle": "Import Theme",
+    "importFilter": "Theme Files",
+    "exportTitle": "Export Theme",
+    "saveFailed": "Could not save the theme. Check that the theme directory is writable.",
+    "deleteFailed": "Could not restore the theme. Check that the theme directory is writable.",
+    "importFailed": "Could not import the theme. Check the file format, configuration fields and version.",
+    "exportFailed": "Could not export the theme. Check the configuration and that the destination is writable.",
+    "invalidFormat": "Choose YAML or JSON format.",
+    "invalidField": "The value or type of theme field {path} is not supported.",
+    "invalidVersion": "This theme format version is not supported."
+  }
+}

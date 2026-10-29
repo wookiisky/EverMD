@@ -1,0 +1,34 @@
+# 由 src/shared/builtin-themes.json 生成，请运行 node scripts/export-builtin-themes.mjs 更新。
+version: 1
+id: sepia
+name: Sepia
+appearance: light
+colors:
+  bg: '#f6efe0'
+  text: '#4f4032'
+  textSecondary: '#7b6b54'
+  textMuted: '#9a8a72'
+  border: '#e7ddc7'
+  link: '#9c5e29'
+  inlineCodeBackground: rgba(122, 90, 51, 0.1)
+  codeBlockBackground: '#ece2cb'
+  codeBlockText: var(--text-color)
+  quoteBorder: '#c9a86a'
+  quoteBackground: '#efe6d0'
+  tableHeaderBackground: '#ece2cb'
+  tableBorder: var(--border-color)
+  selection: rgba(160, 98, 45, 0.15)
+  highlight: '#f2dfa8'
+typography:
+  fontFamily: Georgia, 'Source Han Serif SC', 'Noto Serif SC', 'Songti SC', serif
+  baseLineHeight: 1.85
+styles:
+  heading1:
+    borderStyle: none
+    textAlign: center
+    letterSpacing: 0.02
+  heading2:
+    borderStyle: dashed
+  inlineCode:
+    color: '#7a5a33'
+syntax: {}

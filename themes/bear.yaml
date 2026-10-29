@@ -1,0 +1,31 @@
+# 由 src/shared/builtin-themes.json 生成，请运行 node scripts/export-builtin-themes.mjs 更新。
+version: 1
+id: bear
+name: Bear
+appearance: light
+colors:
+  bg: '#ffffff'
+  text: '#262626'
+  textSecondary: '#767676'
+  textMuted: '#8a8a8a'
+  border: '#eeecea'
+  link: '#d43d2a'
+  inlineCodeBackground: rgba(212, 61, 42, 0.07)
+  codeBlockBackground: '#2e2a28'
+  codeBlockText: '#efe9e4'
+  quoteBorder: '#d43d2a'
+  quoteBackground: transparent
+  tableHeaderBackground: '#f7f5f3'
+  tableBorder: var(--border-color)
+  selection: rgba(212, 61, 42, 0.12)
+  highlight: '#ffe9a8'
+typography: {}
+styles:
+  heading1:
+    letterSpacing: -0.01
+  inlineCode:
+    color: '#d43d2a'
+  horizontalRule:
+    borderColor: '#d43d2a'
+    opacity: 0.35
+syntax: {}
