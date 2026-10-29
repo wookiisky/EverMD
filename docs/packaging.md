@@ -50,10 +50,18 @@ CI 上的 mac job（universal 加签名、公证、dmg 压缩）实测 7 分 20 
 
 ## 本地验证打包的规矩
 
+在 Apple Silicon Mac 上执行：
+
+```bash
+npm run dist:mac:local
+```
+
+该命令先构建，再生成 `release/mac-arm64/EverMD.app`，不制作 dmg 或 zip。应用使用 ad-hoc 临时签名，关闭时间戳请求与公证，因此不依赖钥匙串里的开发者证书或 Apple 时间戳服务。产物仅用于本机测试；正式分发仍使用 `npm run dist:mac` 的签名与公证流程。
+
 - **验证功能不必打包**：`npm run build` 之后用 `npx electron . --remote-debugging-port=9222 --user-data-dir=/tmp/cola-test <文件>` 直接跑 `dist` 产物，几秒就能起来，和打包后的应用是同一份代码。只有要验签名、公证、包体积或真实安装包时才需要 `electron-builder`
 - **只打单架构 `--dir`**：本地验证用 `npx electron-builder --mac --dir --arm64`。`universal` 要合并两套运行时，`dmg` 要压缩，这两件事只在发版时做，本地验证用不上
 - **不要在软链 `node_modules` 的 worktree 里打包**：`git worktree` + 软链 `node_modules` 时，electron-builder 解析生产依赖会失败，日志里出现一串 `cannot find path for dependency dependencies=[katex@undefined, ...]`。产物可能缺失依赖，且依赖解析仍会走一遍。要在有真实 `node_modules` 的目录里打包
-- **跳过签名**：本地用 `CSC_IDENTITY_AUTO_DISCOVERY=false npx electron-builder --mac --dir`，避免钥匙串报错。本地包未签名未公证，只用于自己测试，不要发给用户
+- **本地使用临时签名**：`dist:mac:local` 显式设置 `mac.identity=-`、`mac.timestamp=none` 与 `mac.notarize=false`，避免自动选中开发证书后因时间戳服务不可用而失败；正式打包配置不变
 - **`files` 保持只装 `dist/**/*`**：渲染层与主进程已由 electron-vite 打包完整，不需要把 `node_modules` 装进 asar
 - **`electron` 包自 Electron 42 起不在 `postinstall` 下载二进制**（`ELECTRON_SKIP_BINARY_DOWNLOAD` 也不再支持）。本地要跑起来先 `npx install-electron`，或者直接 `npx electron .`，它会按需下载。CI 不受影响：`npm run build` 不需要二进制，`electron-builder` 打包时自己去取
 - **打包前先杀掉真机测试残留的应用实例**：曾经有一个测试实例（从 `release/mac-arm64/ColaMD.app` 启动、`--user-data-dir` 指向 `/tmp`）忘了关，`electron-builder` 卡在 `packaging platform=darwin` 不动，CPU 0%、日志无报错、八分钟不结束。原因是它要覆盖一个正在被使用的 app bundle。测试结束后用 `pgrep -fl 'user-data-dir=/tmp|/Applications/ColaMD'` 确认残留；只杀 `/tmp` 测试实例，不要动用户正在用的 `/Applications/ColaMD.app`

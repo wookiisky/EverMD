@@ -19,6 +19,7 @@
     "preview": "electron-vite preview",
     "dist": "electron-vite build && electron-builder",
     "dist:mac": "electron-vite build && electron-builder --mac",
+    "dist:mac:local": "electron-vite build && electron-builder --mac --dir --arm64 -c.mac.identity=- -c.mac.timestamp=none -c.mac.notarize=false",
     "dist:win": "electron-vite build && electron-builder --win",
     "dist:linux": "electron-vite build && electron-builder --linux",
     "build:web": "vite build --config vite.web.config.ts",
