@@ -483,5 +483,842 @@
       }
     },
     "syntax": {}
+  },
+  {
+    "version": 1,
+    "id": "vscode-dark-modern",
+    "name": "VS Code Dark Modern",
+    "appearance": "dark",
+    "colors": {
+      "bg": "#1f1f1f",
+      "text": "#cccccc",
+      "textSecondary": "#9d9d9d",
+      "textMuted": "#9d9d9d",
+      "border": "#3c3c3c",
+      "link": "#4daafc",
+      "inlineCodeBackground": "#2b2b2b",
+      "codeBlockBackground": "#2b2b2b",
+      "codeBlockText": "#cccccc",
+      "quoteBorder": "#3c3c3c",
+      "quoteBackground": "transparent",
+      "tableHeaderBackground": "#2b2b2b",
+      "tableBorder": "#3c3c3c",
+      "selection": "color-mix(in srgb, #4daafc 24%, transparent)",
+      "highlight": "#59451b",
+      "chromeBackground": "#181818",
+      "sidebarBackground": "#181818",
+      "controlHover": "#313131",
+      "icon": "#9d9d9d",
+      "shellLine": "#3c3c3c",
+      "cursor": "#cccccc",
+      "searchMatch": "color-mix(in srgb, #4daafc 18%, transparent)",
+      "searchCurrent": "color-mix(in srgb, #4daafc 32%, transparent)"
+    },
+    "typography": {
+      "fontFamily": "-apple-system, BlinkMacSystemFont, \"Segoe UI\", \"Noto Sans SC\", \"PingFang SC\", \"Microsoft YaHei\", sans-serif",
+      "codeFontFamily": "\"SF Mono\", \"Cascadia Code\", \"Fira Code\", Menlo, Consolas, \"Noto Sans Mono CJK SC\", monospace",
+      "lineHeight": 1.5,
+      "paragraphSpacing": 0.1,
+      "baseLineHeight": 1.7
+    },
+    "styles": {
+      "heading1": {
+        "fontSize": 1.85,
+        "fontWeight": 600,
+        "spacingBefore": 1,
+        "spacingAfter": 0.3
+      },
+      "heading2": {
+        "fontSize": 1.5,
+        "fontWeight": 600,
+        "spacingBefore": 1,
+        "spacingAfter": 0.3
+      },
+      "heading3": {
+        "fontSize": 1.25,
+        "fontWeight": 600,
+        "spacingBefore": 1,
+        "spacingAfter": 0.3
+      },
+      "heading4": {
+        "fontSize": 1.125,
+        "fontWeight": 600,
+        "spacingBefore": 1,
+        "spacingAfter": 0.3
+      },
+      "heading5": {
+        "fontSize": 1,
+        "fontWeight": 600,
+        "spacingBefore": 1,
+        "spacingAfter": 0.3
+      },
+      "heading6": {
+        "fontSize": 0.95,
+        "fontWeight": 600,
+        "spacingBefore": 1,
+        "spacingAfter": 0.3
+      },
+      "inlineCode": {
+        "color": "#d0d0d0"
+      },
+      "codeBlock": {
+        "spacingBefore": 0.6,
+        "spacingAfter": 0.6
+      }
+    },
+    "syntax": {
+      "keyword": "#c586c0",
+      "string": "#ce9178",
+      "comment": "#6fa059",
+      "number": "#b5cea8",
+      "function": "#dcdcaa",
+      "type": "#4ec9b0",
+      "property": "#9cdcfe",
+      "meta": "#569cd6"
+    }
+  },
+  {
+    "version": 1,
+    "id": "vscode-light-modern",
+    "name": "VS Code Light Modern",
+    "appearance": "light",
+    "colors": {
+      "bg": "#ffffff",
+      "text": "#3b3b3b",
+      "textSecondary": "#616161",
+      "textMuted": "#616161",
+      "border": "#e5e5e5",
+      "link": "#005fb8",
+      "inlineCodeBackground": "#f8f8f8",
+      "codeBlockBackground": "#f8f8f8",
+      "codeBlockText": "#3b3b3b",
+      "quoteBorder": "#e5e5e5",
+      "quoteBackground": "transparent",
+      "tableHeaderBackground": "#f8f8f8",
+      "tableBorder": "#e5e5e5",
+      "selection": "color-mix(in srgb, #005fb8 24%, transparent)",
+      "highlight": "#fff0b3",
+      "chromeBackground": "#f8f8f8",
+      "sidebarBackground": "#f8f8f8",
+      "controlHover": "#e8e8e8",
+      "icon": "#616161",
+      "shellLine": "#e5e5e5",
+      "cursor": "#3b3b3b",
+      "searchMatch": "color-mix(in srgb, #005fb8 18%, transparent)",
+      "searchCurrent": "color-mix(in srgb, #005fb8 32%, transparent)"
+    },
+    "typography": {
+      "fontFamily": "-apple-system, BlinkMacSystemFont, \"Segoe UI\", \"Noto Sans SC\", \"PingFang SC\", \"Microsoft YaHei\", sans-serif",
+      "codeFontFamily": "\"SF Mono\", \"Cascadia Code\", \"Fira Code\", Menlo, Consolas, \"Noto Sans Mono CJK SC\", monospace",
+      "lineHeight": 1.5,
+      "paragraphSpacing": 0.1,
+      "baseLineHeight": 1.7
+    },
+    "styles": {
+      "heading1": {
+        "fontSize": 1.85,
+        "fontWeight": 600,
+        "spacingBefore": 1,
+        "spacingAfter": 0.3
+      },
+      "heading2": {
+        "fontSize": 1.5,
+        "fontWeight": 600,
+        "spacingBefore": 1,
+        "spacingAfter": 0.3
+      },
+      "heading3": {
+        "fontSize": 1.25,
+        "fontWeight": 600,
+        "spacingBefore": 1,
+        "spacingAfter": 0.3
+      },
+      "heading4": {
+        "fontSize": 1.125,
+        "fontWeight": 600,
+        "spacingBefore": 1,
+        "spacingAfter": 0.3
+      },
+      "heading5": {
+        "fontSize": 1,
+        "fontWeight": 600,
+        "spacingBefore": 1,
+        "spacingAfter": 0.3
+      },
+      "heading6": {
+        "fontSize": 0.95,
+        "fontWeight": 600,
+        "spacingBefore": 1,
+        "spacingAfter": 0.3
+      },
+      "inlineCode": {
+        "color": "#a31515"
+      },
+      "codeBlock": {
+        "spacingBefore": 0.6,
+        "spacingAfter": 0.6
+      }
+    },
+    "syntax": {
+      "keyword": "#af00db",
+      "string": "#a31515",
+      "comment": "#008000",
+      "number": "#098155",
+      "function": "#795e26",
+      "type": "#257a94",
+      "property": "#001080",
+      "meta": "#0000ff"
+    }
+  },
+  {
+    "version": 1,
+    "id": "one-dark",
+    "name": "One Dark",
+    "appearance": "dark",
+    "colors": {
+      "bg": "#282c34",
+      "text": "#c8cdd5",
+      "textSecondary": "#9da5b4",
+      "textMuted": "#9da5b4",
+      "border": "#3e4451",
+      "link": "#61afef",
+      "inlineCodeBackground": "#21252b",
+      "codeBlockBackground": "#21252b",
+      "codeBlockText": "#c8cdd5",
+      "quoteBorder": "#3e4451",
+      "quoteBackground": "transparent",
+      "tableHeaderBackground": "#21252b",
+      "tableBorder": "#3e4451",
+      "selection": "color-mix(in srgb, #61afef 24%, transparent)",
+      "highlight": "#51462c",
+      "chromeBackground": "#21252b",
+      "sidebarBackground": "#21252b",
+      "controlHover": "#353b45",
+      "icon": "#9da5b4",
+      "shellLine": "#3e4451",
+      "cursor": "#c8cdd5",
+      "searchMatch": "color-mix(in srgb, #61afef 18%, transparent)",
+      "searchCurrent": "color-mix(in srgb, #61afef 32%, transparent)"
+    },
+    "typography": {
+      "fontFamily": "-apple-system, BlinkMacSystemFont, \"Segoe UI\", \"Noto Sans SC\", \"PingFang SC\", \"Microsoft YaHei\", sans-serif",
+      "codeFontFamily": "\"SF Mono\", \"Cascadia Code\", \"Fira Code\", Menlo, Consolas, \"Noto Sans Mono CJK SC\", monospace",
+      "lineHeight": 1.5,
+      "paragraphSpacing": 0.1,
+      "baseLineHeight": 1.7
+    },
+    "styles": {
+      "heading1": {
+        "fontSize": 1.85,
+        "fontWeight": 600,
+        "spacingBefore": 1,
+        "spacingAfter": 0.3
+      },
+      "heading2": {
+        "fontSize": 1.5,
+        "fontWeight": 600,
+        "spacingBefore": 1,
+        "spacingAfter": 0.3
+      },
+      "heading3": {
+        "fontSize": 1.25,
+        "fontWeight": 600,
+        "spacingBefore": 1,
+        "spacingAfter": 0.3
+      },
+      "heading4": {
+        "fontSize": 1.125,
+        "fontWeight": 600,
+        "spacingBefore": 1,
+        "spacingAfter": 0.3
+      },
+      "heading5": {
+        "fontSize": 1,
+        "fontWeight": 600,
+        "spacingBefore": 1,
+        "spacingAfter": 0.3
+      },
+      "heading6": {
+        "fontSize": 0.95,
+        "fontWeight": 600,
+        "spacingBefore": 1,
+        "spacingAfter": 0.3
+      },
+      "inlineCode": {
+        "color": "#e5c07b"
+      },
+      "codeBlock": {
+        "spacingBefore": 0.6,
+        "spacingAfter": 0.6
+      }
+    },
+    "syntax": {
+      "keyword": "#c678dd",
+      "string": "#98c379",
+      "comment": "#888d96",
+      "number": "#d19a66",
+      "function": "#61afef",
+      "type": "#e5c07b",
+      "property": "#e06c75",
+      "meta": "#56b6c2"
+    }
+  },
+  {
+    "version": 1,
+    "id": "monokai",
+    "name": "Monokai",
+    "appearance": "dark",
+    "colors": {
+      "bg": "#272822",
+      "text": "#f8f8f2",
+      "textSecondary": "#b3b4a4",
+      "textMuted": "#b3b4a4",
+      "border": "#414339",
+      "link": "#a6e22e",
+      "inlineCodeBackground": "#1e1f1c",
+      "codeBlockBackground": "#1e1f1c",
+      "codeBlockText": "#f8f8f2",
+      "quoteBorder": "#414339",
+      "quoteBackground": "transparent",
+      "tableHeaderBackground": "#1e1f1c",
+      "tableBorder": "#414339",
+      "selection": "color-mix(in srgb, #a6e22e 24%, transparent)",
+      "highlight": "#49452b",
+      "chromeBackground": "#1e1f1c",
+      "sidebarBackground": "#1e1f1c",
+      "controlHover": "#3e3d32",
+      "icon": "#b3b4a4",
+      "shellLine": "#414339",
+      "cursor": "#f8f8f2",
+      "searchMatch": "color-mix(in srgb, #a6e22e 18%, transparent)",
+      "searchCurrent": "color-mix(in srgb, #a6e22e 32%, transparent)"
+    },
+    "typography": {
+      "fontFamily": "-apple-system, BlinkMacSystemFont, \"Segoe UI\", \"Noto Sans SC\", \"PingFang SC\", \"Microsoft YaHei\", sans-serif",
+      "codeFontFamily": "\"SF Mono\", \"Cascadia Code\", \"Fira Code\", Menlo, Consolas, \"Noto Sans Mono CJK SC\", monospace",
+      "lineHeight": 1.5,
+      "paragraphSpacing": 0.1,
+      "baseLineHeight": 1.7
+    },
+    "styles": {
+      "heading1": {
+        "fontSize": 1.85,
+        "fontWeight": 600,
+        "spacingBefore": 1,
+        "spacingAfter": 0.3
+      },
+      "heading2": {
+        "fontSize": 1.5,
+        "fontWeight": 600,
+        "spacingBefore": 1,
+        "spacingAfter": 0.3
+      },
+      "heading3": {
+        "fontSize": 1.25,
+        "fontWeight": 600,
+        "spacingBefore": 1,
+        "spacingAfter": 0.3
+      },
+      "heading4": {
+        "fontSize": 1.125,
+        "fontWeight": 600,
+        "spacingBefore": 1,
+        "spacingAfter": 0.3
+      },
+      "heading5": {
+        "fontSize": 1,
+        "fontWeight": 600,
+        "spacingBefore": 1,
+        "spacingAfter": 0.3
+      },
+      "heading6": {
+        "fontSize": 0.95,
+        "fontWeight": 600,
+        "spacingBefore": 1,
+        "spacingAfter": 0.3
+      },
+      "inlineCode": {
+        "color": "#e6db74"
+      },
+      "codeBlock": {
+        "spacingBefore": 0.6,
+        "spacingAfter": 0.6
+      }
+    },
+    "syntax": {
+      "keyword": "#f9367c",
+      "string": "#e6db74",
+      "comment": "#90908a",
+      "number": "#ae81ff",
+      "function": "#a6e22e",
+      "type": "#66d9ef",
+      "property": "#f8f8f2",
+      "meta": "#fd971f"
+    }
+  },
+  {
+    "version": 1,
+    "id": "github-dark",
+    "name": "GitHub Dark Default",
+    "appearance": "dark",
+    "colors": {
+      "bg": "#0d1117",
+      "text": "#e6edf3",
+      "textSecondary": "#8b949e",
+      "textMuted": "#8b949e",
+      "border": "#30363d",
+      "link": "#58a6ff",
+      "inlineCodeBackground": "#161b22",
+      "codeBlockBackground": "#161b22",
+      "codeBlockText": "#e6edf3",
+      "quoteBorder": "#30363d",
+      "quoteBackground": "transparent",
+      "tableHeaderBackground": "#161b22",
+      "tableBorder": "#30363d",
+      "selection": "color-mix(in srgb, #58a6ff 24%, transparent)",
+      "highlight": "#4b3d18",
+      "chromeBackground": "#010409",
+      "sidebarBackground": "#010409",
+      "controlHover": "#21262d",
+      "icon": "#8b949e",
+      "shellLine": "#30363d",
+      "cursor": "#e6edf3",
+      "searchMatch": "color-mix(in srgb, #58a6ff 18%, transparent)",
+      "searchCurrent": "color-mix(in srgb, #58a6ff 32%, transparent)"
+    },
+    "typography": {
+      "fontFamily": "-apple-system, BlinkMacSystemFont, \"Segoe UI\", \"Noto Sans SC\", \"PingFang SC\", \"Microsoft YaHei\", sans-serif",
+      "codeFontFamily": "\"SF Mono\", \"Cascadia Code\", \"Fira Code\", Menlo, Consolas, \"Noto Sans Mono CJK SC\", monospace",
+      "lineHeight": 1.65,
+      "paragraphSpacing": 0.2,
+      "baseLineHeight": 1.8
+    },
+    "styles": {
+      "heading1": {
+        "fontSize": 1.85,
+        "fontWeight": 600,
+        "spacingBefore": 1.25,
+        "spacingAfter": 0.4
+      },
+      "heading2": {
+        "fontSize": 1.5,
+        "fontWeight": 600,
+        "spacingBefore": 1.25,
+        "spacingAfter": 0.4
+      },
+      "heading3": {
+        "fontSize": 1.25,
+        "fontWeight": 600,
+        "spacingBefore": 1.25,
+        "spacingAfter": 0.4
+      },
+      "heading4": {
+        "fontSize": 1.125,
+        "fontWeight": 600,
+        "spacingBefore": 1.25,
+        "spacingAfter": 0.4
+      },
+      "heading5": {
+        "fontSize": 1,
+        "fontWeight": 600,
+        "spacingBefore": 1.25,
+        "spacingAfter": 0.4
+      },
+      "heading6": {
+        "fontSize": 0.95,
+        "fontWeight": 600,
+        "spacingBefore": 1.25,
+        "spacingAfter": 0.4
+      },
+      "inlineCode": {
+        "color": "#a5d6ff"
+      },
+      "codeBlock": {
+        "spacingBefore": 0.8,
+        "spacingAfter": 0.8
+      }
+    },
+    "syntax": {
+      "keyword": "#ff7b72",
+      "string": "#a5d6ff",
+      "comment": "#8b949e",
+      "number": "#79c0ff",
+      "function": "#d2a8ff",
+      "type": "#ffa657",
+      "property": "#c9d1d9",
+      "meta": "#79c0ff"
+    }
+  },
+  {
+    "version": 1,
+    "id": "solarized-light",
+    "name": "Solarized Light",
+    "appearance": "light",
+    "colors": {
+      "bg": "#fdf6e3",
+      "text": "#073642",
+      "textSecondary": "#556a71",
+      "textMuted": "#556a71",
+      "border": "#d9d2bf",
+      "link": "#1f6eaa",
+      "inlineCodeBackground": "#eee8d5",
+      "codeBlockBackground": "#eee8d5",
+      "codeBlockText": "#073642",
+      "quoteBorder": "#d9d2bf",
+      "quoteBackground": "transparent",
+      "tableHeaderBackground": "#eee8d5",
+      "tableBorder": "#d9d2bf",
+      "selection": "color-mix(in srgb, #1f6eaa 24%, transparent)",
+      "highlight": "#f1dfab",
+      "chromeBackground": "#eee8d5",
+      "sidebarBackground": "#eee8d5",
+      "controlHover": "#e5dfcc",
+      "icon": "#556a71",
+      "shellLine": "#d9d2bf",
+      "cursor": "#073642",
+      "searchMatch": "color-mix(in srgb, #1f6eaa 18%, transparent)",
+      "searchCurrent": "color-mix(in srgb, #1f6eaa 32%, transparent)"
+    },
+    "typography": {
+      "fontFamily": "-apple-system, BlinkMacSystemFont, \"Segoe UI\", \"Noto Sans SC\", \"PingFang SC\", \"Microsoft YaHei\", sans-serif",
+      "codeFontFamily": "\"SF Mono\", \"Cascadia Code\", \"Fira Code\", Menlo, Consolas, \"Noto Sans Mono CJK SC\", monospace",
+      "lineHeight": 1.75,
+      "paragraphSpacing": 0.3,
+      "baseLineHeight": 1.9
+    },
+    "styles": {
+      "heading1": {
+        "fontSize": 1.85,
+        "fontWeight": 600,
+        "spacingBefore": 1.5,
+        "spacingAfter": 0.5
+      },
+      "heading2": {
+        "fontSize": 1.5,
+        "fontWeight": 600,
+        "spacingBefore": 1.5,
+        "spacingAfter": 0.5
+      },
+      "heading3": {
+        "fontSize": 1.25,
+        "fontWeight": 600,
+        "spacingBefore": 1.5,
+        "spacingAfter": 0.5
+      },
+      "heading4": {
+        "fontSize": 1.125,
+        "fontWeight": 600,
+        "spacingBefore": 1.5,
+        "spacingAfter": 0.5
+      },
+      "heading5": {
+        "fontSize": 1,
+        "fontWeight": 600,
+        "spacingBefore": 1.5,
+        "spacingAfter": 0.5
+      },
+      "heading6": {
+        "fontSize": 0.95,
+        "fontWeight": 600,
+        "spacingBefore": 1.5,
+        "spacingAfter": 0.5
+      },
+      "inlineCode": {
+        "color": "#a44712"
+      },
+      "codeBlock": {
+        "spacingBefore": 0.8,
+        "spacingAfter": 0.8
+      }
+    },
+    "syntax": {
+      "keyword": "#5f6e00",
+      "string": "#1e736c",
+      "comment": "#576a71",
+      "number": "#bd2971",
+      "function": "#1d6ca2",
+      "type": "#826200",
+      "property": "#b34213",
+      "meta": "#585dbc"
+    }
+  },
+  {
+    "version": 1,
+    "id": "tokyo-night",
+    "name": "Tokyo Night",
+    "appearance": "dark",
+    "colors": {
+      "bg": "#1a1b26",
+      "text": "#c0caf5",
+      "textSecondary": "#9aa5ce",
+      "textMuted": "#9aa5ce",
+      "border": "#343b58",
+      "link": "#7aa2f7",
+      "inlineCodeBackground": "#16161e",
+      "codeBlockBackground": "#16161e",
+      "codeBlockText": "#c0caf5",
+      "quoteBorder": "#343b58",
+      "quoteBackground": "transparent",
+      "tableHeaderBackground": "#16161e",
+      "tableBorder": "#343b58",
+      "selection": "color-mix(in srgb, #7aa2f7 24%, transparent)",
+      "highlight": "#493f32",
+      "chromeBackground": "#16161e",
+      "sidebarBackground": "#16161e",
+      "controlHover": "#24283b",
+      "icon": "#9aa5ce",
+      "shellLine": "#343b58",
+      "cursor": "#c0caf5",
+      "searchMatch": "color-mix(in srgb, #7aa2f7 18%, transparent)",
+      "searchCurrent": "color-mix(in srgb, #7aa2f7 32%, transparent)"
+    },
+    "typography": {
+      "fontFamily": "-apple-system, BlinkMacSystemFont, \"Segoe UI\", \"Noto Sans SC\", \"PingFang SC\", \"Microsoft YaHei\", sans-serif",
+      "codeFontFamily": "\"SF Mono\", \"Cascadia Code\", \"Fira Code\", Menlo, Consolas, \"Noto Sans Mono CJK SC\", monospace",
+      "lineHeight": 1.75,
+      "paragraphSpacing": 0.3,
+      "baseLineHeight": 1.9
+    },
+    "styles": {
+      "heading1": {
+        "fontSize": 1.85,
+        "fontWeight": 600,
+        "spacingBefore": 1.5,
+        "spacingAfter": 0.5
+      },
+      "heading2": {
+        "fontSize": 1.5,
+        "fontWeight": 600,
+        "spacingBefore": 1.5,
+        "spacingAfter": 0.5
+      },
+      "heading3": {
+        "fontSize": 1.25,
+        "fontWeight": 600,
+        "spacingBefore": 1.5,
+        "spacingAfter": 0.5
+      },
+      "heading4": {
+        "fontSize": 1.125,
+        "fontWeight": 600,
+        "spacingBefore": 1.5,
+        "spacingAfter": 0.5
+      },
+      "heading5": {
+        "fontSize": 1,
+        "fontWeight": 600,
+        "spacingBefore": 1.5,
+        "spacingAfter": 0.5
+      },
+      "heading6": {
+        "fontSize": 0.95,
+        "fontWeight": 600,
+        "spacingBefore": 1.5,
+        "spacingAfter": 0.5
+      },
+      "inlineCode": {
+        "color": "#7dcfff"
+      },
+      "codeBlock": {
+        "spacingBefore": 0.8,
+        "spacingAfter": 0.8
+      }
+    },
+    "syntax": {
+      "keyword": "#bb9af7",
+      "string": "#9ece6a",
+      "comment": "#7982a9",
+      "number": "#ff9e64",
+      "function": "#7aa2f7",
+      "type": "#e0af68",
+      "property": "#73daca",
+      "meta": "#7dcfff"
+    }
+  },
+  {
+    "version": 1,
+    "id": "catppuccin-mocha",
+    "name": "Catppuccin Mocha",
+    "appearance": "dark",
+    "colors": {
+      "bg": "#1e1e2e",
+      "text": "#cdd6f4",
+      "textSecondary": "#bac2de",
+      "textMuted": "#bac2de",
+      "border": "#45475a",
+      "link": "#89b4fa",
+      "inlineCodeBackground": "#181825",
+      "codeBlockBackground": "#181825",
+      "codeBlockText": "#cdd6f4",
+      "quoteBorder": "#45475a",
+      "quoteBackground": "transparent",
+      "tableHeaderBackground": "#181825",
+      "tableBorder": "#45475a",
+      "selection": "color-mix(in srgb, #89b4fa 24%, transparent)",
+      "highlight": "#514735",
+      "chromeBackground": "#11111b",
+      "sidebarBackground": "#11111b",
+      "controlHover": "#313244",
+      "icon": "#bac2de",
+      "shellLine": "#45475a",
+      "cursor": "#cdd6f4",
+      "searchMatch": "color-mix(in srgb, #89b4fa 18%, transparent)",
+      "searchCurrent": "color-mix(in srgb, #89b4fa 32%, transparent)"
+    },
+    "typography": {
+      "fontFamily": "-apple-system, BlinkMacSystemFont, \"Segoe UI\", \"Noto Sans SC\", \"PingFang SC\", \"Microsoft YaHei\", sans-serif",
+      "codeFontFamily": "\"SF Mono\", \"Cascadia Code\", \"Fira Code\", Menlo, Consolas, \"Noto Sans Mono CJK SC\", monospace",
+      "lineHeight": 1.75,
+      "paragraphSpacing": 0.3,
+      "baseLineHeight": 1.9
+    },
+    "styles": {
+      "heading1": {
+        "fontSize": 1.85,
+        "fontWeight": 600,
+        "spacingBefore": 1.5,
+        "spacingAfter": 0.5
+      },
+      "heading2": {
+        "fontSize": 1.5,
+        "fontWeight": 600,
+        "spacingBefore": 1.5,
+        "spacingAfter": 0.5
+      },
+      "heading3": {
+        "fontSize": 1.25,
+        "fontWeight": 600,
+        "spacingBefore": 1.5,
+        "spacingAfter": 0.5
+      },
+      "heading4": {
+        "fontSize": 1.125,
+        "fontWeight": 600,
+        "spacingBefore": 1.5,
+        "spacingAfter": 0.5
+      },
+      "heading5": {
+        "fontSize": 1,
+        "fontWeight": 600,
+        "spacingBefore": 1.5,
+        "spacingAfter": 0.5
+      },
+      "heading6": {
+        "fontSize": 0.95,
+        "fontWeight": 600,
+        "spacingBefore": 1.5,
+        "spacingAfter": 0.5
+      },
+      "inlineCode": {
+        "color": "#fab387"
+      },
+      "codeBlock": {
+        "spacingBefore": 0.8,
+        "spacingAfter": 0.8
+      }
+    },
+    "syntax": {
+      "keyword": "#cba6f7",
+      "string": "#a6e3a1",
+      "comment": "#9399b2",
+      "number": "#fab387",
+      "function": "#89b4fa",
+      "type": "#f9e2af",
+      "property": "#f5c2e7",
+      "meta": "#94e2d5"
+    }
+  },
+  {
+    "version": 1,
+    "id": "catppuccin-latte",
+    "name": "Catppuccin Latte",
+    "appearance": "light",
+    "colors": {
+      "bg": "#eff1f5",
+      "text": "#474a63",
+      "textSecondary": "#5c5f77",
+      "textMuted": "#5c5f77",
+      "border": "#bcc0cc",
+      "link": "#1e61e8",
+      "inlineCodeBackground": "#e6e9ef",
+      "codeBlockBackground": "#e6e9ef",
+      "codeBlockText": "#474a63",
+      "quoteBorder": "#bcc0cc",
+      "quoteBackground": "transparent",
+      "tableHeaderBackground": "#e6e9ef",
+      "tableBorder": "#bcc0cc",
+      "selection": "color-mix(in srgb, #1e61e8 24%, transparent)",
+      "highlight": "#f4e1b2",
+      "chromeBackground": "#dce0e8",
+      "sidebarBackground": "#dce0e8",
+      "controlHover": "#ccd0da",
+      "icon": "#5c5f77",
+      "shellLine": "#bcc0cc",
+      "cursor": "#474a63",
+      "searchMatch": "color-mix(in srgb, #1e61e8 18%, transparent)",
+      "searchCurrent": "color-mix(in srgb, #1e61e8 32%, transparent)"
+    },
+    "typography": {
+      "fontFamily": "-apple-system, BlinkMacSystemFont, \"Segoe UI\", \"Noto Sans SC\", \"PingFang SC\", \"Microsoft YaHei\", sans-serif",
+      "codeFontFamily": "\"SF Mono\", \"Cascadia Code\", \"Fira Code\", Menlo, Consolas, \"Noto Sans Mono CJK SC\", monospace",
+      "lineHeight": 1.75,
+      "paragraphSpacing": 0.3,
+      "baseLineHeight": 1.9
+    },
+    "styles": {
+      "heading1": {
+        "fontSize": 1.85,
+        "fontWeight": 600,
+        "spacingBefore": 1.5,
+        "spacingAfter": 0.5
+      },
+      "heading2": {
+        "fontSize": 1.5,
+        "fontWeight": 600,
+        "spacingBefore": 1.5,
+        "spacingAfter": 0.5
+      },
+      "heading3": {
+        "fontSize": 1.25,
+        "fontWeight": 600,
+        "spacingBefore": 1.5,
+        "spacingAfter": 0.5
+      },
+      "heading4": {
+        "fontSize": 1.125,
+        "fontWeight": 600,
+        "spacingBefore": 1.5,
+        "spacingAfter": 0.5
+      },
+      "heading5": {
+        "fontSize": 1,
+        "fontWeight": 600,
+        "spacingBefore": 1.5,
+        "spacingAfter": 0.5
+      },
+      "heading6": {
+        "fontSize": 0.95,
+        "fontWeight": 600,
+        "spacingBefore": 1.5,
+        "spacingAfter": 0.5
+      },
+      "inlineCode": {
+        "color": "#8535ef"
+      },
+      "codeBlock": {
+        "spacingBefore": 0.8,
+        "spacingAfter": 0.8
+      }
+    },
+    "syntax": {
+      "keyword": "#8535ef",
+      "string": "#2f7620",
+      "comment": "#64667b",
+      "number": "#b44301",
+      "function": "#0c59f4",
+      "type": "#915c13",
+      "property": "#ce0f38",
+      "meta": "#127378"
+    }
   }
 ]

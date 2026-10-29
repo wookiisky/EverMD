@@ -8,7 +8,7 @@
 //                  The homepage owns the frame around it, so this page asks the
 //                  parent over postMessage when to grow and when to come back.
 //
-// Scope is deliberate (MVP): typing, the 12 themes, and one sample document.
+// Scope is deliberate (MVP): typing, the built-in themes, and one sample document.
 // Tabs, the file list, search, export, diagrams and formulas stay in the app.
 
 import { createEditor, setMarkdown } from '../renderer/editor/editor'

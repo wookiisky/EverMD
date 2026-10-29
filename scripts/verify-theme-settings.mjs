@@ -147,6 +147,97 @@ async function verifyThemeNames() {
   }
 }
 
+// 主题从原生菜单进入，配置值与真实元素的计算样式比较，不固定任何一套配色。
+async function verifyBuiltinThemeApplication() {
+  const builtins=JSON.parse(readFileSync(join(root,'src/shared/builtin-themes.json'),'utf8'))
+  const fileBefore=readFileSync(file)
+  const timeBefore=statSync(file).mtimeMs
+  const boundsBefore=await evaluate(main,'globalThis.__themeVerifyWindow.getBounds()')
+  const layout=`(() => {
+    const body=getComputedStyle(document.body)
+    return {column:body.getPropertyValue('--editor-column-width'),sides:['left','right'].map(side=>{
+      const element=document.getElementById(side+'-sidebar'),style=getComputedStyle(element)
+      return {side,hidden:element.hidden,visible:document.body.classList.contains('show-'+side+'-sidebar'),width:style.width,top:style.top,bottom:style.bottom}
+    })}
+  })()`
+  const layoutBefore=await evaluate(renderer,layout)
+  // 先选中末项，保证首个 checkbox 菜单动作也是真实切换，避免重选把已选项反选。
+  await setTheme(builtins.at(-1).id)
+  for(const theme of builtins) {
+    await evaluate(main,`(() => {
+      const item=require('electron').Menu.getApplicationMenu().getMenuItemById(${JSON.stringify('theme-'+theme.id)})
+      if(!item||!item.enabled)throw new Error('缺少可用主题菜单项')
+      item.click(item,globalThis.__themeVerifyWindow)
+    })()`)
+    await waitFor(`document.body.dataset.themeId===${JSON.stringify(theme.id)}&&localStorage.getItem('colamd-theme')===${JSON.stringify(theme.id)}`, '原生菜单未应用主题 '+theme.id)
+    await waitFor(`require('electron').Menu.getApplicationMenu().getMenuItemById(${JSON.stringify('theme-'+theme.id)})?.checked`, '主题菜单未选中 '+theme.id,main)
+    check(`${theme.id} 原生菜单可选择并同步勾选`,true)
+    // 历史主题的计算样式由迁移基线覆盖；显式配色与排版覆盖新配置的实际消费路径。
+    if(!Object.keys(theme.syntax).length&&theme.typography.lineHeight===undefined)continue
+    await renderFixture()
+    const actual=await evaluate(renderer,`(() => {
+      const theme=${JSON.stringify(theme)},results=[]
+      const normalize=value=>{const probe=document.createElement('span');probe.style.color=value;document.body.append(probe);try{return getComputedStyle(probe).color}finally{probe.remove()}}
+      const compare=(name,actual,expected)=>results.push({name,actual,expected,ok:actual===expected})
+      const color=(name,selector,property,value,pseudo)=>{
+        if(value===undefined)return
+        const element=document.querySelector(selector)
+        compare(name,element?getComputedStyle(element,pseudo)[property]:null,normalize(value))
+      }
+      color('正文底色','body','backgroundColor',theme.colors.bg)
+      color('外壳底色','#titlebar','backgroundColor',theme.colors.chromeBackground)
+      color('左侧栏底色','#left-sidebar','backgroundColor',theme.colors.sidebarBackground)
+      color('右侧栏底色','#right-sidebar','backgroundColor',theme.colors.sidebarBackground)
+      color('正文文字','.cm-md-paragraph','color',theme.colors.text)
+      color('代码块底色','.cm-md-codeblock','backgroundColor',theme.colors.codeBlockBackground,'::before')
+      color('代码块文字','.cm-md-codeblock','color',theme.colors.codeBlockText)
+      color('行内代码文字','.cm-md-inlinecode','color',theme.styles.inlineCode?.color)
+      const code=[...document.querySelectorAll('.cm-md-codeblock')].find(element=>element.textContent.includes('const sample'))
+      for(const [token,kind] of [['const','keyword'],['"code"','string'],['// comment','comment']]) {
+        const walker=code&&document.createTreeWalker(code,NodeFilter.SHOW_TEXT)
+        let element
+        while(walker?.nextNode())if(walker.currentNode.textContent.trim()===token){element=walker.currentNode.parentElement;break}
+        if(theme.syntax[kind])compare('代码语法 '+kind,element?getComputedStyle(element).color:null,normalize(theme.syntax[kind]))
+      }
+      const paragraph=[...document.querySelectorAll('.cm-md-paragraph')].find(element=>element.textContent.startsWith('自动换行测量：'))
+      if(theme.typography.lineHeight!==undefined) {
+        const style=getComputedStyle(paragraph)
+        results.push({name:'段内行高',actual:parseFloat(style.lineHeight),expected:parseFloat(style.fontSize)*theme.typography.lineHeight,ok:Math.abs(parseFloat(style.lineHeight)-parseFloat(style.fontSize)*theme.typography.lineHeight)<.15})
+      }
+      if(theme.typography.paragraphSpacing!==undefined) {
+        const before=parseFloat(getComputedStyle(paragraph).paddingBottom)
+        document.body.style.setProperty('--theme-paragraph-spacing','0em')
+        const without=parseFloat(getComputedStyle(paragraph).paddingBottom)
+        document.body.style.removeProperty('--theme-paragraph-spacing')
+        const expected=parseFloat(getComputedStyle(paragraph).fontSize)*theme.typography.paragraphSpacing
+        results.push({name:'段落间距',actual:before-without,expected,ok:Math.abs(before-without-expected)<.15})
+      }
+      for(let level=1;level<=6;level++) {
+        const style=theme.styles['heading'+level],element=document.querySelector('.cm-md-atxheading'+level)
+        if(style?.fontWeight!==undefined)compare('标题字重 '+level,getComputedStyle(element).fontWeight,String(style.fontWeight))
+      }
+      return results
+    })()`)
+    check(`${theme.id} 正文、外壳、代码与排版实际生效`,actual.length>0&&actual.every(result=>result.ok),actual.filter(result=>!result.ok))
+    const metrics=await evaluate(renderer,paragraphMetrics)
+    if(theme.typography.lineHeight!==undefined)check(`${theme.id} 自动折行使用主题行高`,metrics.count>2&&Math.abs(metrics.step-metrics.fontSize*theme.typography.lineHeight)<.15,metrics)
+    await evaluate(renderer,`(() => {const view=document.querySelector('#editor .cm-content').cmTile.root.view;view.focus();view.dispatch({selection:{anchor:view.state.doc.toString().indexOf('正文 **')}})})()`)
+    await waitFor(`!!document.querySelector('#editor .cm-cursor')`, '主题光标未绘制 '+theme.id)
+    const cursor=await evaluate(renderer,`(() => {const probe=document.createElement('span');probe.style.color=${JSON.stringify(theme.colors.cursor??theme.colors.text)};document.body.append(probe);try{return {actual:getComputedStyle(document.querySelector('#editor .cm-cursor')).borderLeftColor,expected:getComputedStyle(probe).color}}finally{probe.remove()}})()`)
+    check(`${theme.id} 光标使用主题颜色`,cursor.actual===cursor.expected,cursor)
+    await evaluate(renderer,`(() => {const view=document.querySelector('#editor .cm-content').cmTile.root.view,anchor=view.state.doc.toString().indexOf('正文 **');view.dispatch({selection:{anchor,head:anchor+2}})})()`)
+    await waitFor(`!!document.querySelector('#editor .cm-selectionBackground')`, '主题选区未绘制 '+theme.id)
+    const selection=await evaluate(renderer,`(() => {const probe=document.createElement('span');probe.style.color=${JSON.stringify(theme.colors.selection)};document.body.append(probe);try{return {actual:getComputedStyle(document.querySelector('#editor .cm-selectionBackground')).backgroundColor,expected:getComputedStyle(probe).color}}finally{probe.remove()}})()`)
+    check(`${theme.id} 选区使用主题颜色`,selection.actual===selection.expected,selection)
+    await evaluate(renderer,`(() => {const view=document.querySelector('#editor .cm-content').cmTile.root.view;view.dispatch({selection:{anchor:0}})})()`)
+    const screenshot=await renderer.send('Page.captureScreenshot',{format:'png'})
+    writeFileSync(`/tmp/colamd-theme-${theme.id}.png`,Buffer.from(screenshot.data,'base64'))
+  }
+  check('切换内置主题保持侧栏显隐、宽度及正文列宽',JSON.stringify(await evaluate(renderer,layout))===JSON.stringify(layoutBefore))
+  check('切换内置主题保持窗口结构',JSON.stringify(await evaluate(main,'globalThis.__themeVerifyWindow.getBounds()'))===JSON.stringify(boundsBefore))
+  check('切换内置主题不改写文档字节及修改时间',fileBefore.equals(readFileSync(file))&&statSync(file).mtimeMs===timeBefore)
+}
+
 // 计算样式基线只记录视觉属性，不绑定主题颜色的具体字面值。
 const visualSnapshot = `(() => {
   const properties=['color','backgroundColor','fontFamily','fontSize','fontWeight','fontStyle','lineHeight','letterSpacing','textAlign','borderTopColor','borderTopWidth','borderBottomColor','borderBottomWidth','borderBottomStyle','borderLeftWidth','borderRightWidth','paddingTop','paddingBottom','paddingLeft','paddingRight','opacity']
@@ -391,6 +482,8 @@ try {
     }
     await setTheme('light')
     await verifyThemeNames()
+    await verifyBuiltinThemeApplication()
+    await setTheme('light')
     const initial = await evaluate(renderer, visualSnapshot)
     const definitionsBeforeCancel = await evaluate(renderer, `window.electronAPI.listThemeDefinitions()`)
     await openSettings()

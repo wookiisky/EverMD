@@ -1,0 +1,80 @@
+# 由 src/shared/builtin-themes.json 生成，请运行 node scripts/export-builtin-themes.mjs 更新。
+version: 1
+id: vscode-light-modern
+name: VS Code Light Modern
+appearance: light
+colors:
+  bg: '#ffffff'
+  text: '#3b3b3b'
+  textSecondary: '#616161'
+  textMuted: '#616161'
+  border: '#e5e5e5'
+  link: '#005fb8'
+  inlineCodeBackground: '#f8f8f8'
+  codeBlockBackground: '#f8f8f8'
+  codeBlockText: '#3b3b3b'
+  quoteBorder: '#e5e5e5'
+  quoteBackground: transparent
+  tableHeaderBackground: '#f8f8f8'
+  tableBorder: '#e5e5e5'
+  selection: 'color-mix(in srgb, #005fb8 24%, transparent)'
+  highlight: '#fff0b3'
+  chromeBackground: '#f8f8f8'
+  sidebarBackground: '#f8f8f8'
+  controlHover: '#e8e8e8'
+  icon: '#616161'
+  shellLine: '#e5e5e5'
+  cursor: '#3b3b3b'
+  searchMatch: 'color-mix(in srgb, #005fb8 18%, transparent)'
+  searchCurrent: 'color-mix(in srgb, #005fb8 32%, transparent)'
+typography:
+  fontFamily: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif
+  codeFontFamily: '"SF Mono", "Cascadia Code", "Fira Code", Menlo, Consolas, "Noto Sans Mono CJK SC", monospace'
+  lineHeight: 1.5
+  paragraphSpacing: 0.1
+  baseLineHeight: 1.7
+styles:
+  heading1:
+    fontSize: 1.85
+    fontWeight: 600
+    spacingBefore: 1
+    spacingAfter: 0.3
+  heading2:
+    fontSize: 1.5
+    fontWeight: 600
+    spacingBefore: 1
+    spacingAfter: 0.3
+  heading3:
+    fontSize: 1.25
+    fontWeight: 600
+    spacingBefore: 1
+    spacingAfter: 0.3
+  heading4:
+    fontSize: 1.125
+    fontWeight: 600
+    spacingBefore: 1
+    spacingAfter: 0.3
+  heading5:
+    fontSize: 1
+    fontWeight: 600
+    spacingBefore: 1
+    spacingAfter: 0.3
+  heading6:
+    fontSize: 0.95
+    fontWeight: 600
+    spacingBefore: 1
+    spacingAfter: 0.3
+  inlineCode:
+    color: '#a31515'
+  codeBlock:
+    spacingBefore: 0.6
+    spacingAfter: 0.6
+syntax:
+  keyword: '#af00db'
+  string: '#a31515'
+  comment: '#008000'
+  number: '#098155'
+  function: '#795e26'
+  type: '#257a94'
+  property: '#001080'
+  meta: '#0000ff'

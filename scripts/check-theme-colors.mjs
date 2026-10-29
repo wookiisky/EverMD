@@ -7,6 +7,10 @@ const dir_project = process.cwd()
 const path_base = path.join(dir_project, 'src/renderer/themes/base.css')
 const dir_themes = path.join(dir_project, 'themes')
 
+// 历史 CSS 是兼容样例；新主题仅维护统一配置及生成的 YAML。
+const LEGACY_THEME_IDS = new Set(['light', 'elegant', 'notion', 'writer', 'bear', 'sepia',
+	'dark', 'gruvbox', 'midnight', 'solarized-dark', 'nord', 'dracula'])
+
 const text_base = fs.readFileSync(path_base, 'utf8')
 const bundle = await build({ entryPoints: ['src/shared/theme-definition.ts'], bundle: true, write: false, platform: 'node', format: 'esm', logLevel: 'silent' })
 const { BUILTIN_THEMES, THEME_COLOR_FIELDS } = await import('data:text/javascript;base64,' + Buffer.from(bundle.outputFiles[0].text).toString('base64'))
@@ -93,10 +97,27 @@ function getContrastRatio(value_foreground, value_background) {
 for (const theme of BUILTIN_THEMES) {
 	const name_theme = theme.id
 	const values_built_in = getBuiltInTheme(name_theme)
-	const values_standalone = getStandaloneTheme(name_theme)
+	if (!LEGACY_THEME_IDS.has(name_theme)) {
+		const codeBackground = theme.colors.codeBlockBackground
+		for (const [kind, color] of Object.entries(theme.syntax)) {
+			assert.ok(getContrastRatio(color, codeBackground) >= 4.5, `${name_theme} code ${kind} must meet WCAG AA`)
+		}
+		assert.ok(getContrastRatio(theme.colors.codeBlockText, codeBackground) >= 4.5, `${name_theme} code text must meet WCAG AA`)
+		assert.ok(getContrastRatio(theme.styles.inlineCode.color, theme.colors.inlineCodeBackground) >= 4.5, `${name_theme} inline code must meet WCAG AA`)
+		for (const surface of ['chromeBackground', 'sidebarBackground']) {
+			assert.ok(getContrastRatio(theme.colors.textSecondary, theme.colors[surface]) >= 4.5, `${name_theme} secondary text on ${surface} must meet WCAG AA`)
+		}
+	}
 	const value_secondary = values_built_in['text-secondary']
 
-	assert.equal(values_standalone['text-secondary'], value_secondary)
+	if (LEGACY_THEME_IDS.has(name_theme)) {
+		assert.equal(getStandaloneTheme(name_theme)['text-secondary'], value_secondary)
+	} else {
+		for (const key of ['text-color', 'link-color']) {
+			assert.ok(getContrastRatio(values_built_in[key], values_built_in['bg-color']) >= 4.5,
+				`${name_theme} ${key} must meet WCAG AA`)
+		}
+	}
 	assert.ok(
 		getContrastRatio(value_secondary, values_built_in['bg-color']) >= 4.5,
 		`${name_theme} secondary text must meet WCAG AA`
@@ -168,4 +189,4 @@ assert.equal(values_direct['bg-color'], values_default['bg-color'])
 assert.equal(values_direct['text-color'], values_default['text-color'])
 assert.equal(values_direct['border-color'], values_default['border-color'])
 
-console.log('通过：12 套统一主题、历史 CSS 主题的颜色兼容、对比度、搜索高亮与缺省继承契约')
+console.log(`通过：${BUILTIN_THEMES.length} 套统一主题、历史 CSS 主题的颜色兼容、对比度、搜索高亮与缺省继承契约`)

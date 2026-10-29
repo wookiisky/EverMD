@@ -1,0 +1,80 @@
+# 由 src/shared/builtin-themes.json 生成，请运行 node scripts/export-builtin-themes.mjs 更新。
+version: 1
+id: solarized-light
+name: Solarized Light
+appearance: light
+colors:
+  bg: '#fdf6e3'
+  text: '#073642'
+  textSecondary: '#556a71'
+  textMuted: '#556a71'
+  border: '#d9d2bf'
+  link: '#1f6eaa'
+  inlineCodeBackground: '#eee8d5'
+  codeBlockBackground: '#eee8d5'
+  codeBlockText: '#073642'
+  quoteBorder: '#d9d2bf'
+  quoteBackground: transparent
+  tableHeaderBackground: '#eee8d5'
+  tableBorder: '#d9d2bf'
+  selection: 'color-mix(in srgb, #1f6eaa 24%, transparent)'
+  highlight: '#f1dfab'
+  chromeBackground: '#eee8d5'
+  sidebarBackground: '#eee8d5'
+  controlHover: '#e5dfcc'
+  icon: '#556a71'
+  shellLine: '#d9d2bf'
+  cursor: '#073642'
+  searchMatch: 'color-mix(in srgb, #1f6eaa 18%, transparent)'
+  searchCurrent: 'color-mix(in srgb, #1f6eaa 32%, transparent)'
+typography:
+  fontFamily: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif
+  codeFontFamily: '"SF Mono", "Cascadia Code", "Fira Code", Menlo, Consolas, "Noto Sans Mono CJK SC", monospace'
+  lineHeight: 1.75
+  paragraphSpacing: 0.3
+  baseLineHeight: 1.9
+styles:
+  heading1:
+    fontSize: 1.85
+    fontWeight: 600
+    spacingBefore: 1.5
+    spacingAfter: 0.5
+  heading2:
+    fontSize: 1.5
+    fontWeight: 600
+    spacingBefore: 1.5
+    spacingAfter: 0.5
+  heading3:
+    fontSize: 1.25
+    fontWeight: 600
+    spacingBefore: 1.5
+    spacingAfter: 0.5
+  heading4:
+    fontSize: 1.125
+    fontWeight: 600
+    spacingBefore: 1.5
+    spacingAfter: 0.5
+  heading5:
+    fontSize: 1
+    fontWeight: 600
+    spacingBefore: 1.5
+    spacingAfter: 0.5
+  heading6:
+    fontSize: 0.95
+    fontWeight: 600
+    spacingBefore: 1.5
+    spacingAfter: 0.5
+  inlineCode:
+    color: '#a44712'
+  codeBlock:
+    spacingBefore: 0.8
+    spacingAfter: 0.8
+syntax:
+  keyword: '#5f6e00'
+  string: '#1e736c'
+  comment: '#576a71'
+  number: '#bd2971'
+  function: '#1d6ca2'
+  type: '#826200'
+  property: '#b34213'
+  meta: '#585dbc'

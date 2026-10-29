@@ -1,0 +1,80 @@
+# 由 src/shared/builtin-themes.json 生成，请运行 node scripts/export-builtin-themes.mjs 更新。
+version: 1
+id: one-dark
+name: One Dark
+appearance: dark
+colors:
+  bg: '#282c34'
+  text: '#c8cdd5'
+  textSecondary: '#9da5b4'
+  textMuted: '#9da5b4'
+  border: '#3e4451'
+  link: '#61afef'
+  inlineCodeBackground: '#21252b'
+  codeBlockBackground: '#21252b'
+  codeBlockText: '#c8cdd5'
+  quoteBorder: '#3e4451'
+  quoteBackground: transparent
+  tableHeaderBackground: '#21252b'
+  tableBorder: '#3e4451'
+  selection: 'color-mix(in srgb, #61afef 24%, transparent)'
+  highlight: '#51462c'
+  chromeBackground: '#21252b'
+  sidebarBackground: '#21252b'
+  controlHover: '#353b45'
+  icon: '#9da5b4'
+  shellLine: '#3e4451'
+  cursor: '#c8cdd5'
+  searchMatch: 'color-mix(in srgb, #61afef 18%, transparent)'
+  searchCurrent: 'color-mix(in srgb, #61afef 32%, transparent)'
+typography:
+  fontFamily: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif
+  codeFontFamily: '"SF Mono", "Cascadia Code", "Fira Code", Menlo, Consolas, "Noto Sans Mono CJK SC", monospace'
+  lineHeight: 1.5
+  paragraphSpacing: 0.1
+  baseLineHeight: 1.7
+styles:
+  heading1:
+    fontSize: 1.85
+    fontWeight: 600
+    spacingBefore: 1
+    spacingAfter: 0.3
+  heading2:
+    fontSize: 1.5
+    fontWeight: 600
+    spacingBefore: 1
+    spacingAfter: 0.3
+  heading3:
+    fontSize: 1.25
+    fontWeight: 600
+    spacingBefore: 1
+    spacingAfter: 0.3
+  heading4:
+    fontSize: 1.125
+    fontWeight: 600
+    spacingBefore: 1
+    spacingAfter: 0.3
+  heading5:
+    fontSize: 1
+    fontWeight: 600
+    spacingBefore: 1
+    spacingAfter: 0.3
+  heading6:
+    fontSize: 0.95
+    fontWeight: 600
+    spacingBefore: 1
+    spacingAfter: 0.3
+  inlineCode:
+    color: '#e5c07b'
+  codeBlock:
+    spacingBefore: 0.6
+    spacingAfter: 0.6
+syntax:
+  keyword: '#c678dd'
+  string: '#98c379'
+  comment: '#888d96'
+  number: '#d19a66'
+  function: '#61afef'
+  type: '#e5c07b'
+  property: '#e06c75'
+  meta: '#56b6c2'

@@ -36,7 +36,7 @@ Local macOS tests measured a 77%–80% reduction in input handling and synchrono
 - Tabs, multiple windows, search and replace, and a document outline.
 - Task lists, mathematical formulas, Mermaid diagrams, and rich-text copy.
 - PDF, HTML, Word, and image export.
-- Twelve built-in themes, custom CSS themes, and editor font settings.
+- Twenty-one built-in themes, including VS Code, One Dark, Monokai and Catppuccin, with editable colors and document typography. Import and export YAML or JSON themes; existing CSS themes remain supported.
 - Desktop support for macOS, Windows, and Linux.
 
 Theme files are in [`themes/`](themes/), with a [theme authoring guide](themes/README.md) and a [template](themes/template.css).

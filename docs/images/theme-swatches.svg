@@ -1,76 +1,131 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1186" height="350" viewBox="0 0 1186 350" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Helvetica,Arial,sans-serif">
-<text x="24" y="34" font-size="13" font-weight="700" letter-spacing="2" fill="#8a837b">LIGHT</text>
-<rect x="24" y="56" width="178" height="120" rx="12" fill="#ffffff" stroke="#d0d7de" stroke-width="1"/>
-<text x="42" y="82" font-family="sans-serif" font-size="10.5" font-weight="700" letter-spacing="1" fill="#656d76">01</text>
-<text x="42" y="108" font-family="sans-serif" font-size="17" font-weight="700" fill="#24292f">Light</text>
-<rect x="42" y="142" width="20" height="20" rx="5.5" fill="#24292f" stroke="#d0d7de" stroke-width="1"/>
-<rect x="70" y="142" width="20" height="20" rx="5.5" fill="#0969da" stroke="#d0d7de" stroke-width="1"/>
-<rect x="98" y="142" width="20" height="20" rx="5.5" fill="#656d76" stroke="#d0d7de" stroke-width="1"/>
-<rect x="216" y="56" width="178" height="120" rx="12" fill="#f0edea" stroke="#d8d3ce" stroke-width="1"/>
-<text x="234" y="82" font-family="sans-serif" font-size="10.5" font-weight="700" letter-spacing="1" fill="#777777">02</text>
-<text x="234" y="108" font-family="sans-serif" font-size="17" font-weight="700" fill="#2c2c2c">Elegant</text>
-<rect x="234" y="142" width="20" height="20" rx="5.5" fill="#2c2c2c" stroke="#d8d3ce" stroke-width="1"/>
-<rect x="262" y="142" width="20" height="20" rx="5.5" fill="#c44b2b" stroke="#d8d3ce" stroke-width="1"/>
-<rect x="290" y="142" width="20" height="20" rx="5.5" fill="#777777" stroke="#d8d3ce" stroke-width="1"/>
-<rect x="408" y="56" width="178" height="120" rx="12" fill="#ffffff" stroke="#e9e9e7" stroke-width="1"/>
-<text x="426" y="82" font-family="sans-serif" font-size="10.5" font-weight="700" letter-spacing="1" fill="#9b9a97">03</text>
-<text x="426" y="108" font-family="sans-serif" font-size="17" font-weight="700" fill="#37352f">Notion</text>
-<rect x="426" y="142" width="20" height="20" rx="5.5" fill="#37352f" stroke="#e9e9e7" stroke-width="1"/>
-<rect x="454" y="142" width="20" height="20" rx="5.5" fill="#37352f" stroke="#e9e9e7" stroke-width="1"/>
-<rect x="482" y="142" width="20" height="20" rx="5.5" fill="#9b9a97" stroke="#e9e9e7" stroke-width="1"/>
-<rect x="600" y="56" width="178" height="120" rx="12" fill="#fcfcfa" stroke="#e3e3de" stroke-width="1"/>
-<text x="618" y="82" font-family="sans-serif" font-size="10.5" font-weight="700" letter-spacing="1" fill="#8e8e8a">04</text>
-<text x="618" y="108" font-family="sans-serif" font-size="17" font-weight="700" fill="#1a1a1a">Writer</text>
-<rect x="618" y="142" width="20" height="20" rx="5.5" fill="#1a1a1a" stroke="#e3e3de" stroke-width="1"/>
-<rect x="646" y="142" width="20" height="20" rx="5.5" fill="#3b6ec4" stroke="#e3e3de" stroke-width="1"/>
-<rect x="674" y="142" width="20" height="20" rx="5.5" fill="#8e8e8a" stroke="#e3e3de" stroke-width="1"/>
-<rect x="792" y="56" width="178" height="120" rx="12" fill="#ffffff" stroke="#e8e6e3" stroke-width="1"/>
-<text x="810" y="82" font-family="sans-serif" font-size="10.5" font-weight="700" letter-spacing="1" fill="#8a8a8a">05</text>
-<text x="810" y="108" font-family="sans-serif" font-size="17" font-weight="700" fill="#262626">Bear</text>
-<rect x="810" y="142" width="20" height="20" rx="5.5" fill="#262626" stroke="#e8e6e3" stroke-width="1"/>
-<rect x="838" y="142" width="20" height="20" rx="5.5" fill="#d43d2a" stroke="#e8e6e3" stroke-width="1"/>
-<rect x="866" y="142" width="20" height="20" rx="5.5" fill="#8a8a8a" stroke="#e8e6e3" stroke-width="1"/>
-<rect x="984" y="56" width="178" height="120" rx="12" fill="#f6efe0" stroke="#e2d7bf" stroke-width="1"/>
-<text x="1002" y="82" font-family="sans-serif" font-size="10.5" font-weight="700" letter-spacing="1" fill="#9a8a72">06</text>
-<text x="1002" y="108" font-family="sans-serif" font-size="17" font-weight="700" fill="#4f4032">Sepia</text>
-<rect x="1002" y="142" width="20" height="20" rx="5.5" fill="#4f4032" stroke="#e2d7bf" stroke-width="1"/>
-<rect x="1030" y="142" width="20" height="20" rx="5.5" fill="#a0622d" stroke="#e2d7bf" stroke-width="1"/>
-<rect x="1058" y="142" width="20" height="20" rx="5.5" fill="#9a8a72" stroke="#e2d7bf" stroke-width="1"/>
-<text x="24" y="200" font-size="13" font-weight="700" letter-spacing="2" fill="#8a837b">DARK</text>
-<rect x="24" y="216" width="178" height="120" rx="12" fill="#0d1117" stroke="#30363d" stroke-width="1"/>
-<text x="42" y="242" font-family="sans-serif" font-size="10.5" font-weight="700" letter-spacing="1" fill="#8b949e">07</text>
-<text x="42" y="268" font-family="sans-serif" font-size="17" font-weight="700" fill="#e6edf3">Dark</text>
-<rect x="42" y="302" width="20" height="20" rx="5.5" fill="#e6edf3" stroke="#30363d" stroke-width="1"/>
-<rect x="70" y="302" width="20" height="20" rx="5.5" fill="#58a6ff" stroke="#30363d" stroke-width="1"/>
-<rect x="98" y="302" width="20" height="20" rx="5.5" fill="#8b949e" stroke="#30363d" stroke-width="1"/>
-<rect x="216" y="216" width="178" height="120" rx="12" fill="#282828" stroke="#3c3836" stroke-width="1"/>
-<text x="234" y="242" font-family="sans-serif" font-size="10.5" font-weight="700" letter-spacing="1" fill="#928374">08</text>
-<text x="234" y="268" font-family="sans-serif" font-size="17" font-weight="700" fill="#ebdbb2">Gruvbox</text>
-<rect x="234" y="302" width="20" height="20" rx="5.5" fill="#ebdbb2" stroke="#3c3836" stroke-width="1"/>
-<rect x="262" y="302" width="20" height="20" rx="5.5" fill="#83a598" stroke="#3c3836" stroke-width="1"/>
-<rect x="290" y="302" width="20" height="20" rx="5.5" fill="#928374" stroke="#3c3836" stroke-width="1"/>
-<rect x="408" y="216" width="178" height="120" rx="12" fill="#000000" stroke="#262626" stroke-width="1"/>
-<text x="426" y="242" font-family="sans-serif" font-size="10.5" font-weight="700" letter-spacing="1" fill="#7a7a7a">09</text>
-<text x="426" y="268" font-family="sans-serif" font-size="17" font-weight="700" fill="#d6d6d6">Midnight</text>
-<rect x="426" y="302" width="20" height="20" rx="5.5" fill="#d6d6d6" stroke="#262626" stroke-width="1"/>
-<rect x="454" y="302" width="20" height="20" rx="5.5" fill="#0a84ff" stroke="#262626" stroke-width="1"/>
-<rect x="482" y="302" width="20" height="20" rx="5.5" fill="#7a7a7a" stroke="#262626" stroke-width="1"/>
-<rect x="600" y="216" width="178" height="120" rx="12" fill="#002b36" stroke="#0d3d4a" stroke-width="1"/>
-<text x="618" y="242" font-family="sans-serif" font-size="10.5" font-weight="700" letter-spacing="1" fill="#586e75">10</text>
-<text x="618" y="268" font-family="sans-serif" font-size="17" font-weight="700" fill="#839496">Solarized Dark</text>
-<rect x="618" y="302" width="20" height="20" rx="5.5" fill="#839496" stroke="#0d3d4a" stroke-width="1"/>
-<rect x="646" y="302" width="20" height="20" rx="5.5" fill="#268bd2" stroke="#0d3d4a" stroke-width="1"/>
-<rect x="674" y="302" width="20" height="20" rx="5.5" fill="#586e75" stroke="#0d3d4a" stroke-width="1"/>
-<rect x="792" y="216" width="178" height="120" rx="12" fill="#2e3440" stroke="#3b4252" stroke-width="1"/>
-<text x="810" y="242" font-family="sans-serif" font-size="10.5" font-weight="700" letter-spacing="1" fill="#7d8ba1">11</text>
-<text x="810" y="268" font-family="sans-serif" font-size="17" font-weight="700" fill="#d8dee9">Nord</text>
-<rect x="810" y="302" width="20" height="20" rx="5.5" fill="#d8dee9" stroke="#3b4252" stroke-width="1"/>
-<rect x="838" y="302" width="20" height="20" rx="5.5" fill="#88c0d0" stroke="#3b4252" stroke-width="1"/>
-<rect x="866" y="302" width="20" height="20" rx="5.5" fill="#7d8ba1" stroke="#3b4252" stroke-width="1"/>
-<rect x="984" y="216" width="178" height="120" rx="12" fill="#282a36" stroke="#44475a" stroke-width="1"/>
-<text x="1002" y="242" font-family="sans-serif" font-size="10.5" font-weight="700" letter-spacing="1" fill="#7f86a8">12</text>
-<text x="1002" y="268" font-family="sans-serif" font-size="17" font-weight="700" fill="#f8f8f2">Dracula</text>
-<rect x="1002" y="302" width="20" height="20" rx="5.5" fill="#f8f8f2" stroke="#44475a" stroke-width="1"/>
-<rect x="1030" y="302" width="20" height="20" rx="5.5" fill="#bd93f9" stroke="#44475a" stroke-width="1"/>
-<rect x="1058" y="302" width="20" height="20" rx="5.5" fill="#7f86a8" stroke="#44475a" stroke-width="1"/>
+<svg xmlns="http://www.w3.org/2000/svg" width="1216" height="920" viewBox="0 0 1216 920" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Helvetica,Arial,sans-serif">
+<title>ColaMD built-in theme palettes</title>
+<text x="24" y="40" font-size="13" font-weight="700" letter-spacing="2" fill="#656d76">LIGHT</text>
+<rect x="24" y="64" width="280" height="120" rx="12" fill="#ffffff" stroke="#dce1e6"/>
+<text x="42" y="92" font-size="10.5" font-weight="700" fill="#656d76">01</text>
+<text x="42" y="121" font-size="17" font-weight="700" fill="#24292f">Light</text>
+<rect x="42" y="150" width="20" height="20" rx="5.5" fill="#24292f"/>
+<rect x="70" y="150" width="20" height="20" rx="5.5" fill="#0969da"/>
+<rect x="98" y="150" width="20" height="20" rx="5.5" fill="#656d76"/>
+<rect x="320" y="64" width="280" height="120" rx="12" fill="#f0edea" stroke="#dedad5"/>
+<text x="338" y="92" font-size="10.5" font-weight="700" fill="#6c6c6c">02</text>
+<text x="338" y="121" font-size="17" font-weight="700" fill="#2c2c2c">Elegant</text>
+<rect x="338" y="150" width="20" height="20" rx="5.5" fill="#2c2c2c"/>
+<rect x="366" y="150" width="20" height="20" rx="5.5" fill="#bc4424"/>
+<rect x="394" y="150" width="20" height="20" rx="5.5" fill="#6c6c6c"/>
+<rect x="616" y="64" width="280" height="120" rx="12" fill="#ffffff" stroke="#eeeeed"/>
+<text x="634" y="92" font-size="10.5" font-weight="700" fill="#777674">03</text>
+<text x="634" y="121" font-size="17" font-weight="700" fill="#37352f">Notion</text>
+<rect x="634" y="150" width="20" height="20" rx="5.5" fill="#37352f"/>
+<rect x="662" y="150" width="20" height="20" rx="5.5" fill="#37352f"/>
+<rect x="690" y="150" width="20" height="20" rx="5.5" fill="#777674"/>
+<rect x="912" y="64" width="280" height="120" rx="12" fill="#fcfcfa" stroke="#e9e9e5"/>
+<text x="930" y="92" font-size="10.5" font-weight="700" fill="#757571">04</text>
+<text x="930" y="121" font-size="17" font-weight="700" fill="#1a1a1a">Writer</text>
+<rect x="930" y="150" width="20" height="20" rx="5.5" fill="#1a1a1a"/>
+<rect x="958" y="150" width="20" height="20" rx="5.5" fill="#3b6ec4"/>
+<rect x="986" y="150" width="20" height="20" rx="5.5" fill="#757571"/>
+<rect x="24" y="200" width="280" height="120" rx="12" fill="#ffffff" stroke="#eeecea"/>
+<text x="42" y="228" font-size="10.5" font-weight="700" fill="#767676">05</text>
+<text x="42" y="257" font-size="17" font-weight="700" fill="#262626">Bear</text>
+<rect x="42" y="286" width="20" height="20" rx="5.5" fill="#262626"/>
+<rect x="70" y="286" width="20" height="20" rx="5.5" fill="#d43d2a"/>
+<rect x="98" y="286" width="20" height="20" rx="5.5" fill="#767676"/>
+<rect x="320" y="200" width="280" height="120" rx="12" fill="#f6efe0" stroke="#e7ddc7"/>
+<text x="338" y="228" font-size="10.5" font-weight="700" fill="#7b6b54">06</text>
+<text x="338" y="257" font-size="17" font-weight="700" fill="#4f4032">Sepia</text>
+<rect x="338" y="286" width="20" height="20" rx="5.5" fill="#4f4032"/>
+<rect x="366" y="286" width="20" height="20" rx="5.5" fill="#9c5e29"/>
+<rect x="394" y="286" width="20" height="20" rx="5.5" fill="#7b6b54"/>
+<rect x="616" y="200" width="280" height="120" rx="12" fill="#ffffff" stroke="#e5e5e5"/>
+<text x="634" y="228" font-size="10.5" font-weight="700" fill="#616161">07</text>
+<text x="634" y="257" font-size="17" font-weight="700" fill="#3b3b3b">VS Code Light Modern</text>
+<rect x="634" y="286" width="20" height="20" rx="5.5" fill="#3b3b3b"/>
+<rect x="662" y="286" width="20" height="20" rx="5.5" fill="#005fb8"/>
+<rect x="690" y="286" width="20" height="20" rx="5.5" fill="#616161"/>
+<rect x="912" y="200" width="280" height="120" rx="12" fill="#fdf6e3" stroke="#d9d2bf"/>
+<text x="930" y="228" font-size="10.5" font-weight="700" fill="#556a71">08</text>
+<text x="930" y="257" font-size="17" font-weight="700" fill="#073642">Solarized Light</text>
+<rect x="930" y="286" width="20" height="20" rx="5.5" fill="#073642"/>
+<rect x="958" y="286" width="20" height="20" rx="5.5" fill="#1f6eaa"/>
+<rect x="986" y="286" width="20" height="20" rx="5.5" fill="#556a71"/>
+<rect x="24" y="336" width="280" height="120" rx="12" fill="#eff1f5" stroke="#bcc0cc"/>
+<text x="42" y="364" font-size="10.5" font-weight="700" fill="#5c5f77">09</text>
+<text x="42" y="393" font-size="17" font-weight="700" fill="#474a63">Catppuccin Latte</text>
+<rect x="42" y="422" width="20" height="20" rx="5.5" fill="#474a63"/>
+<rect x="70" y="422" width="20" height="20" rx="5.5" fill="#1e61e8"/>
+<rect x="98" y="422" width="20" height="20" rx="5.5" fill="#5c5f77"/>
+<text x="24" y="488" font-size="13" font-weight="700" letter-spacing="2" fill="#656d76">DARK</text>
+<rect x="24" y="512" width="280" height="120" rx="12" fill="#0d1117" stroke="#272d34"/>
+<text x="42" y="540" font-size="10.5" font-weight="700" fill="#aab3bd">01</text>
+<text x="42" y="569" font-size="17" font-weight="700" fill="#e6edf3">Dark</text>
+<rect x="42" y="598" width="20" height="20" rx="5.5" fill="#e6edf3"/>
+<rect x="70" y="598" width="20" height="20" rx="5.5" fill="#58a6ff"/>
+<rect x="98" y="598" width="20" height="20" rx="5.5" fill="#aab3bd"/>
+<rect x="320" y="512" width="280" height="120" rx="12" fill="#282828" stroke="#373432"/>
+<text x="338" y="540" font-size="10.5" font-weight="700" fill="#c5b5a5">02</text>
+<text x="338" y="569" font-size="17" font-weight="700" fill="#ebdbb2">Gruvbox</text>
+<rect x="338" y="598" width="20" height="20" rx="5.5" fill="#ebdbb2"/>
+<rect x="366" y="598" width="20" height="20" rx="5.5" fill="#83a598"/>
+<rect x="394" y="598" width="20" height="20" rx="5.5" fill="#c5b5a5"/>
+<rect x="616" y="512" width="280" height="120" rx="12" fill="#000000" stroke="#1c1c1c"/>
+<text x="634" y="540" font-size="10.5" font-weight="700" fill="#b1b1b1">03</text>
+<text x="634" y="569" font-size="17" font-weight="700" fill="#d6d6d6">Midnight</text>
+<rect x="634" y="598" width="20" height="20" rx="5.5" fill="#d6d6d6"/>
+<rect x="662" y="598" width="20" height="20" rx="5.5" fill="#0a84ff"/>
+<rect x="690" y="598" width="20" height="20" rx="5.5" fill="#b1b1b1"/>
+<rect x="912" y="512" width="280" height="120" rx="12" fill="#002b36" stroke="#0a3845"/>
+<text x="930" y="540" font-size="10.5" font-weight="700" fill="#a4bbc3">04</text>
+<text x="930" y="569" font-size="17" font-weight="700" fill="#c2d5d7">Solarized Dark</text>
+<rect x="930" y="598" width="20" height="20" rx="5.5" fill="#c2d5d7"/>
+<rect x="958" y="598" width="20" height="20" rx="5.5" fill="#3093da"/>
+<rect x="986" y="598" width="20" height="20" rx="5.5" fill="#a4bbc3"/>
+<rect x="24" y="648" width="280" height="120" rx="12" fill="#2e3440" stroke="#383e4e"/>
+<text x="42" y="676" font-size="10.5" font-weight="700" fill="#aebdd4">05</text>
+<text x="42" y="705" font-size="17" font-weight="700" fill="#d8dee9">Nord</text>
+<rect x="42" y="734" width="20" height="20" rx="5.5" fill="#d8dee9"/>
+<rect x="70" y="734" width="20" height="20" rx="5.5" fill="#88c0d0"/>
+<rect x="98" y="734" width="20" height="20" rx="5.5" fill="#aebdd4"/>
+<rect x="320" y="648" width="280" height="120" rx="12" fill="#282a36" stroke="#3d4051"/>
+<text x="338" y="676" font-size="10.5" font-weight="700" fill="#afb7db">06</text>
+<text x="338" y="705" font-size="17" font-weight="700" fill="#f8f8f2">Dracula</text>
+<rect x="338" y="734" width="20" height="20" rx="5.5" fill="#f8f8f2"/>
+<rect x="366" y="734" width="20" height="20" rx="5.5" fill="#bd93f9"/>
+<rect x="394" y="734" width="20" height="20" rx="5.5" fill="#afb7db"/>
+<rect x="616" y="648" width="280" height="120" rx="12" fill="#1f1f1f" stroke="#3c3c3c"/>
+<text x="634" y="676" font-size="10.5" font-weight="700" fill="#9d9d9d">07</text>
+<text x="634" y="705" font-size="17" font-weight="700" fill="#cccccc">VS Code Dark Modern</text>
+<rect x="634" y="734" width="20" height="20" rx="5.5" fill="#cccccc"/>
+<rect x="662" y="734" width="20" height="20" rx="5.5" fill="#4daafc"/>
+<rect x="690" y="734" width="20" height="20" rx="5.5" fill="#9d9d9d"/>
+<rect x="912" y="648" width="280" height="120" rx="12" fill="#282c34" stroke="#3e4451"/>
+<text x="930" y="676" font-size="10.5" font-weight="700" fill="#9da5b4">08</text>
+<text x="930" y="705" font-size="17" font-weight="700" fill="#c8cdd5">One Dark</text>
+<rect x="930" y="734" width="20" height="20" rx="5.5" fill="#c8cdd5"/>
+<rect x="958" y="734" width="20" height="20" rx="5.5" fill="#61afef"/>
+<rect x="986" y="734" width="20" height="20" rx="5.5" fill="#9da5b4"/>
+<rect x="24" y="784" width="280" height="120" rx="12" fill="#272822" stroke="#414339"/>
+<text x="42" y="812" font-size="10.5" font-weight="700" fill="#b3b4a4">09</text>
+<text x="42" y="841" font-size="17" font-weight="700" fill="#f8f8f2">Monokai</text>
+<rect x="42" y="870" width="20" height="20" rx="5.5" fill="#f8f8f2"/>
+<rect x="70" y="870" width="20" height="20" rx="5.5" fill="#a6e22e"/>
+<rect x="98" y="870" width="20" height="20" rx="5.5" fill="#b3b4a4"/>
+<rect x="320" y="784" width="280" height="120" rx="12" fill="#0d1117" stroke="#30363d"/>
+<text x="338" y="812" font-size="10.5" font-weight="700" fill="#8b949e">10</text>
+<text x="338" y="841" font-size="17" font-weight="700" fill="#e6edf3">GitHub Dark Default</text>
+<rect x="338" y="870" width="20" height="20" rx="5.5" fill="#e6edf3"/>
+<rect x="366" y="870" width="20" height="20" rx="5.5" fill="#58a6ff"/>
+<rect x="394" y="870" width="20" height="20" rx="5.5" fill="#8b949e"/>
+<rect x="616" y="784" width="280" height="120" rx="12" fill="#1a1b26" stroke="#343b58"/>
+<text x="634" y="812" font-size="10.5" font-weight="700" fill="#9aa5ce">11</text>
+<text x="634" y="841" font-size="17" font-weight="700" fill="#c0caf5">Tokyo Night</text>
+<rect x="634" y="870" width="20" height="20" rx="5.5" fill="#c0caf5"/>
+<rect x="662" y="870" width="20" height="20" rx="5.5" fill="#7aa2f7"/>
+<rect x="690" y="870" width="20" height="20" rx="5.5" fill="#9aa5ce"/>
+<rect x="912" y="784" width="280" height="120" rx="12" fill="#1e1e2e" stroke="#45475a"/>
+<text x="930" y="812" font-size="10.5" font-weight="700" fill="#bac2de">12</text>
+<text x="930" y="841" font-size="17" font-weight="700" fill="#cdd6f4">Catppuccin Mocha</text>
+<rect x="930" y="870" width="20" height="20" rx="5.5" fill="#cdd6f4"/>
+<rect x="958" y="870" width="20" height="20" rx="5.5" fill="#89b4fa"/>
+<rect x="986" y="870" width="20" height="20" rx="5.5" fill="#bac2de"/>
 </svg>

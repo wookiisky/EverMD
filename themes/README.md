@@ -1,6 +1,6 @@
 # ColaMD Themes
 
-ColaMD 的 12 套内置主题和用户主题采用相同的结构化配置。在 **主题 → 主题详细设置** 中修改颜色与排版，或通过 **主题 → 导入主题** 载入 YAML、JSON 和旧 CSS。
+ColaMD 的 21 套内置主题和用户主题采用相同的结构化配置。在 **主题 → 主题详细设置** 中修改颜色与排版，或通过 **主题 → 导入主题** 载入 YAML、JSON 和旧 CSS。
 
 配置面板提供界面配色、各级标题、正文、强调、引用、列表、代码、表格及代码语法颜色。段内行高控制同段自动换行和手动续行；段落间距是在段尾增加的额外空隙，两者分别配置。文件里的空行仍遵循「隐藏空行」偏好，主题设置不修改 Markdown 原文。
 
@@ -8,7 +8,7 @@ ColaMD 的 12 套内置主题和用户主题采用相同的结构化配置。在
 
 下方 YAML 文件由 `src/shared/builtin-themes.json` 生成，内置主题只维护这一份来源。主题名称统一使用英文，桌面菜单、配置面板和网页预览均读取配置中的 `name`，不随界面语言切换。更新后运行 `node scripts/export-builtin-themes.mjs`，检查使用 `node scripts/export-builtin-themes.mjs --check`。
 
-See the [theme swatches](https://raw.githubusercontent.com/marswaveai/ColaMD/main/docs/images/theme-swatches.svg) for a visual preview.
+See the [theme swatches](../docs/images/theme-swatches.svg) for a visual preview.
 
 ## Light Themes
 
@@ -20,6 +20,9 @@ See the [theme swatches](https://raw.githubusercontent.com/marswaveai/ColaMD/mai
 | Writer | [writer.yaml](writer.yaml) | Monospace body, restrained decoration. |
 | Bear | [bear.yaml](bear.yaml) | Crisp white with red accents. |
 | Sepia | [sepia.yaml](sepia.yaml) | Warm paper and serif text. |
+| VS Code Light Modern | [vscode-light-modern.yaml](vscode-light-modern.yaml) | White page, gray shell and compact technical typography. |
+| Solarized Light | [solarized-light.yaml](solarized-light.yaml) | Warm ivory, teal accents and spacious paragraphs. |
+| Catppuccin Latte | [catppuccin-latte.yaml](catppuccin-latte.yaml) | Soft light surfaces and pastel code colors. |
 
 ## Dark Themes
 
@@ -31,6 +34,20 @@ See the [theme swatches](https://raw.githubusercontent.com/marswaveai/ColaMD/mai
 | Solarized Dark | [solarized-dark.yaml](solarized-dark.yaml) | Deep teal with muted accents. |
 | Nord | [nord.yaml](nord.yaml) | Cool blue-grays and pale links. |
 | Dracula | [dracula.yaml](dracula.yaml) | Dark background and vivid accents. |
+| VS Code Dark Modern | [vscode-dark-modern.yaml](vscode-dark-modern.yaml) | Charcoal surfaces and compact technical typography. |
+| One Dark | [one-dark.yaml](one-dark.yaml) | Atom blue-gray surfaces and restrained headings. |
+| Monokai | [monokai.yaml](monokai.yaml) | Warm black with classic green, yellow and pink code colors. |
+| GitHub Dark Default | [github-dark.yaml](github-dark.yaml) | Neutral dark surfaces and balanced README typography. |
+| Tokyo Night | [tokyo-night.yaml](tokyo-night.yaml) | Deep blue surfaces, blue-purple code and relaxed spacing. |
+| Catppuccin Mocha | [catppuccin-mocha.yaml](catppuccin-mocha.yaml) | Soft dark surfaces and pastel code colors. |
+
+## 经典编辑器主题的适配
+
+新增九套主题参考原项目的配色，适配 ColaMD 的文档、外壳、选区和代码语法。正文、引用、列表和加粗继续共用正文颜色，代码与链接保留各自的颜色。少数原版正文、次要文字或链接颜色因对比度不足而调整，因此是针对 Markdown 阅读的适配版本。
+
+VS Code、One Dark 和 Monokai 使用较紧凑的行高与段间距，GitHub 使用均衡排版，Solarized Light、Tokyo Night 和 Catppuccin 使用较舒展的段落。字体使用本机字体及中文回退，不下载字体；用户已有字体和字号设置继续优先。主题只调整文档排版，侧栏位置、宽度、显隐、正文列宽与窗口结构仍由原有视图设置控制。
+
+配色来源、版权和许可见 [主题来源与许可](NOTICE.md)。色卡及 YAML 由同一份内置配置生成，主题名称和数量随配置更新。
 
 ## 配置格式
 

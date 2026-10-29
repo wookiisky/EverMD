@@ -36,7 +36,7 @@ EverMD 是基于 [ColaMD](https://github.com/marswaveai/colamd) 修改的开源 
 - 多标签页、多窗口、查找替换和文档大纲。
 - 待办列表、数学公式、Mermaid 图表和富文本复制。
 - PDF、HTML、Word 和图片导出。
-- 12 个内置主题、自定义 CSS 主题及编辑器字体设置。
+- 21 个内置主题，包含 VS Code、One Dark、Monokai 和 Catppuccin，可调整配色与文档排版，支持 YAML、JSON 主题导入导出并兼容旧 CSS 主题。
 - macOS、Windows 和 Linux 桌面支持。
 
 主题文件位于 [`themes/`](themes/)，可参考[主题编写说明](themes/README.md)和[模板](themes/template.css)。

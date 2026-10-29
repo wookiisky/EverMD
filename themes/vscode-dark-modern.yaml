@@ -1,0 +1,80 @@
+# 由 src/shared/builtin-themes.json 生成，请运行 node scripts/export-builtin-themes.mjs 更新。
+version: 1
+id: vscode-dark-modern
+name: VS Code Dark Modern
+appearance: dark
+colors:
+  bg: '#1f1f1f'
+  text: '#cccccc'
+  textSecondary: '#9d9d9d'
+  textMuted: '#9d9d9d'
+  border: '#3c3c3c'
+  link: '#4daafc'
+  inlineCodeBackground: '#2b2b2b'
+  codeBlockBackground: '#2b2b2b'
+  codeBlockText: '#cccccc'
+  quoteBorder: '#3c3c3c'
+  quoteBackground: transparent
+  tableHeaderBackground: '#2b2b2b'
+  tableBorder: '#3c3c3c'
+  selection: 'color-mix(in srgb, #4daafc 24%, transparent)'
+  highlight: '#59451b'
+  chromeBackground: '#181818'
+  sidebarBackground: '#181818'
+  controlHover: '#313131'
+  icon: '#9d9d9d'
+  shellLine: '#3c3c3c'
+  cursor: '#cccccc'
+  searchMatch: 'color-mix(in srgb, #4daafc 18%, transparent)'
+  searchCurrent: 'color-mix(in srgb, #4daafc 32%, transparent)'
+typography:
+  fontFamily: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif
+  codeFontFamily: '"SF Mono", "Cascadia Code", "Fira Code", Menlo, Consolas, "Noto Sans Mono CJK SC", monospace'
+  lineHeight: 1.5
+  paragraphSpacing: 0.1
+  baseLineHeight: 1.7
+styles:
+  heading1:
+    fontSize: 1.85
+    fontWeight: 600
+    spacingBefore: 1
+    spacingAfter: 0.3
+  heading2:
+    fontSize: 1.5
+    fontWeight: 600
+    spacingBefore: 1
+    spacingAfter: 0.3
+  heading3:
+    fontSize: 1.25
+    fontWeight: 600
+    spacingBefore: 1
+    spacingAfter: 0.3
+  heading4:
+    fontSize: 1.125
+    fontWeight: 600
+    spacingBefore: 1
+    spacingAfter: 0.3
+  heading5:
+    fontSize: 1
+    fontWeight: 600
+    spacingBefore: 1
+    spacingAfter: 0.3
+  heading6:
+    fontSize: 0.95
+    fontWeight: 600
+    spacingBefore: 1
+    spacingAfter: 0.3
+  inlineCode:
+    color: '#d0d0d0'
+  codeBlock:
+    spacingBefore: 0.6
+    spacingAfter: 0.6
+syntax:
+  keyword: '#c586c0'
+  string: '#ce9178'
+  comment: '#6fa059'
+  number: '#b5cea8'
+  function: '#dcdcaa'
+  type: '#4ec9b0'
+  property: '#9cdcfe'
+  meta: '#569cd6'

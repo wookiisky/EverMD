@@ -6,10 +6,21 @@ const modules = await Promise.all(['src/shared/theme-definition.ts', 'src/render
   const bundle = await build({ entryPoints: [path], bundle: true, write: false, platform: 'node', format: 'esm', logLevel: 'silent' })
   return import('data:text/javascript;base64,' + Buffer.from(bundle.outputFiles[0].text).toString('base64'))
 }))
-const { BUILTIN_THEMES, THEME_COLOR_FIELDS, THEME_TEXT_KINDS, validateThemeDefinition, cloneTheme, getBuiltinTheme } = modules[0]
+const { BUILTIN_THEMES, THEME_COLOR_FIELDS, THEME_SYNTAX_FIELDS, THEME_TEXT_KINDS, validateThemeDefinition, cloneTheme, getBuiltinTheme } = modules[0]
 const { generateThemeCSS } = modules[1]
 
-assert.equal(BUILTIN_THEMES.length, 12)
+// 本批主题须独立可用，不能依赖浅色默认值补齐深色配色。
+const classicThemeIds = ['vscode-dark-modern', 'vscode-light-modern', 'one-dark', 'monokai', 'github-dark',
+  'solarized-light', 'tokyo-night', 'catppuccin-mocha', 'catppuccin-latte']
+for (const id of classicThemeIds) {
+  const theme = getBuiltinTheme(id)
+  assert.ok(theme, `缺少经典主题：${id}`)
+  for (const { key } of THEME_COLOR_FIELDS) assert.ok(theme.colors[key], `${id} 缺少界面颜色 ${key}`)
+  for (const { key } of THEME_SYNTAX_FIELDS) assert.ok(theme.syntax[key], `${id} 缺少语法颜色 ${key}`)
+  assert.ok(theme.typography.lineHeight > 0, `${id} 缺少段内行高`)
+  assert.ok(theme.typography.paragraphSpacing >= 0, `${id} 缺少段落间距`)
+  assert.equal(theme.extensions, undefined, `${id} 应使用结构化排版`)
+}
 assert.equal(new Set(BUILTIN_THEMES.map(theme => theme.id)).size, BUILTIN_THEMES.length)
 for (const theme of BUILTIN_THEMES) {
   assert.deepEqual(validateThemeDefinition(theme), theme)
@@ -18,13 +29,16 @@ for (const theme of BUILTIN_THEMES) {
   const copy = cloneTheme(theme)
   copy.name = '副本'
   assert.notEqual(theme.name, copy.name)
-  assert.equal(theme.typography.lineHeight, undefined)
-  assert.equal(theme.typography.paragraphSpacing, undefined)
   const css = generateThemeCSS(theme)
   assert(css.includes('body.theme-configured'))
   for (const field of THEME_COLOR_FIELDS) {
     if (theme.colors[field.key]) assert(css.includes(`${field.variable}: ${theme.colors[field.key]}`))
   }
+  for (const field of THEME_SYNTAX_FIELDS) {
+    if (theme.syntax[field.key]) assert(css.includes(`${field.variable}: ${theme.syntax[field.key]}`))
+  }
+  if (theme.typography.lineHeight !== undefined) assert(css.includes(`line-height: ${theme.typography.lineHeight};`))
+  if (theme.typography.paragraphSpacing !== undefined) assert(css.includes(`--theme-paragraph-spacing: ${theme.typography.paragraphSpacing}em;`))
 }
 assert.equal(getBuiltinTheme('不存在'), undefined)
 const basic = cloneTheme(BUILTIN_THEMES[0])
@@ -83,4 +97,4 @@ assert(layoutCSS.includes('.cm-md-codeblock-first'))
 assert(layoutCSS.includes('.cm-md-codeblock-last'))
 assert.match(layoutCSS, /\.cm-md-li-bullet,[\s\S]*?\{\s*font-size: inherit;/)
 assert.match(layoutCSS, /\.colamd-document pre > code \{\s*font-size: inherit;/)
-console.log('通过：12 套主题结构、克隆与往返、无效输入、段内行高与段间距分离、编辑器和 HTML 样式生成')
+console.log(`通过：${BUILTIN_THEMES.length} 套主题结构、克隆与往返、无效输入、段内行高与段间距分离、编辑器和 HTML 样式生成`)

@@ -1,0 +1,80 @@
+# 由 src/shared/builtin-themes.json 生成，请运行 node scripts/export-builtin-themes.mjs 更新。
+version: 1
+id: monokai
+name: Monokai
+appearance: dark
+colors:
+  bg: '#272822'
+  text: '#f8f8f2'
+  textSecondary: '#b3b4a4'
+  textMuted: '#b3b4a4'
+  border: '#414339'
+  link: '#a6e22e'
+  inlineCodeBackground: '#1e1f1c'
+  codeBlockBackground: '#1e1f1c'
+  codeBlockText: '#f8f8f2'
+  quoteBorder: '#414339'
+  quoteBackground: transparent
+  tableHeaderBackground: '#1e1f1c'
+  tableBorder: '#414339'
+  selection: 'color-mix(in srgb, #a6e22e 24%, transparent)'
+  highlight: '#49452b'
+  chromeBackground: '#1e1f1c'
+  sidebarBackground: '#1e1f1c'
+  controlHover: '#3e3d32'
+  icon: '#b3b4a4'
+  shellLine: '#414339'
+  cursor: '#f8f8f2'
+  searchMatch: 'color-mix(in srgb, #a6e22e 18%, transparent)'
+  searchCurrent: 'color-mix(in srgb, #a6e22e 32%, transparent)'
+typography:
+  fontFamily: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif
+  codeFontFamily: '"SF Mono", "Cascadia Code", "Fira Code", Menlo, Consolas, "Noto Sans Mono CJK SC", monospace'
+  lineHeight: 1.5
+  paragraphSpacing: 0.1
+  baseLineHeight: 1.7
+styles:
+  heading1:
+    fontSize: 1.85
+    fontWeight: 600
+    spacingBefore: 1
+    spacingAfter: 0.3
+  heading2:
+    fontSize: 1.5
+    fontWeight: 600
+    spacingBefore: 1
+    spacingAfter: 0.3
+  heading3:
+    fontSize: 1.25
+    fontWeight: 600
+    spacingBefore: 1
+    spacingAfter: 0.3
+  heading4:
+    fontSize: 1.125
+    fontWeight: 600
+    spacingBefore: 1
+    spacingAfter: 0.3
+  heading5:
+    fontSize: 1
+    fontWeight: 600
+    spacingBefore: 1
+    spacingAfter: 0.3
+  heading6:
+    fontSize: 0.95
+    fontWeight: 600
+    spacingBefore: 1
+    spacingAfter: 0.3
+  inlineCode:
+    color: '#e6db74'
+  codeBlock:
+    spacingBefore: 0.6
+    spacingAfter: 0.6
+syntax:
+  keyword: '#f9367c'
+  string: '#e6db74'
+  comment: '#90908a'
+  number: '#ae81ff'
+  function: '#a6e22e'
+  type: '#66d9ef'
+  property: '#f8f8f2'
+  meta: '#fd971f'

@@ -1,0 +1,80 @@
+# 由 src/shared/builtin-themes.json 生成，请运行 node scripts/export-builtin-themes.mjs 更新。
+version: 1
+id: github-dark
+name: GitHub Dark Default
+appearance: dark
+colors:
+  bg: '#0d1117'
+  text: '#e6edf3'
+  textSecondary: '#8b949e'
+  textMuted: '#8b949e'
+  border: '#30363d'
+  link: '#58a6ff'
+  inlineCodeBackground: '#161b22'
+  codeBlockBackground: '#161b22'
+  codeBlockText: '#e6edf3'
+  quoteBorder: '#30363d'
+  quoteBackground: transparent
+  tableHeaderBackground: '#161b22'
+  tableBorder: '#30363d'
+  selection: 'color-mix(in srgb, #58a6ff 24%, transparent)'
+  highlight: '#4b3d18'
+  chromeBackground: '#010409'
+  sidebarBackground: '#010409'
+  controlHover: '#21262d'
+  icon: '#8b949e'
+  shellLine: '#30363d'
+  cursor: '#e6edf3'
+  searchMatch: 'color-mix(in srgb, #58a6ff 18%, transparent)'
+  searchCurrent: 'color-mix(in srgb, #58a6ff 32%, transparent)'
+typography:
+  fontFamily: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif
+  codeFontFamily: '"SF Mono", "Cascadia Code", "Fira Code", Menlo, Consolas, "Noto Sans Mono CJK SC", monospace'
+  lineHeight: 1.65
+  paragraphSpacing: 0.2
+  baseLineHeight: 1.8
+styles:
+  heading1:
+    fontSize: 1.85
+    fontWeight: 600
+    spacingBefore: 1.25
+    spacingAfter: 0.4
+  heading2:
+    fontSize: 1.5
+    fontWeight: 600
+    spacingBefore: 1.25
+    spacingAfter: 0.4
+  heading3:
+    fontSize: 1.25
+    fontWeight: 600
+    spacingBefore: 1.25
+    spacingAfter: 0.4
+  heading4:
+    fontSize: 1.125
+    fontWeight: 600
+    spacingBefore: 1.25
+    spacingAfter: 0.4
+  heading5:
+    fontSize: 1
+    fontWeight: 600
+    spacingBefore: 1.25
+    spacingAfter: 0.4
+  heading6:
+    fontSize: 0.95
+    fontWeight: 600
+    spacingBefore: 1.25
+    spacingAfter: 0.4
+  inlineCode:
+    color: '#a5d6ff'
+  codeBlock:
+    spacingBefore: 0.8
+    spacingAfter: 0.8
+syntax:
+  keyword: '#ff7b72'
+  string: '#a5d6ff'
+  comment: '#8b949e'
+  number: '#79c0ff'
+  function: '#d2a8ff'
+  type: '#ffa657'
+  property: '#c9d1d9'
+  meta: '#79c0ff'
