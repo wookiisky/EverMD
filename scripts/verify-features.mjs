@@ -10,6 +10,7 @@
 // 只验代码块与正文的光标颜色：npm run verify:features -- --cursor-only
 // 只验列表中表格导出：npm run verify:features -- --list-export-only
 // 只验中文标点强调：npm run verify:features -- --emphasis-only
+// 隐藏窗口无法截图时可传 --skip-selection-screenshots，明确排除选区像素验收，保留其余检查。
 // 窗口放在屏幕外，不占用屏幕；一次启动跑完所有断言。
 //
 // 注意：页面侧表达式写在模板字符串里，反斜杠会被模板字符串吃掉一次，
@@ -698,7 +699,14 @@ async function checkSourceShortcut(renderer) {
   })()`)
   check('切换源码后全选只选编辑区', allSource, String(allSource))
   await pressKey(renderer, '/', 'Slash', 191, 4)
-  const visual = await evaluate(renderer, `document.activeElement === document.querySelector('#editor .cm-content')`)
+  // 渲染模式在布局测量后恢复焦点，等待实际结果，不假定隐藏窗口会在 200ms 内绘制。
+  const visual = await evaluate(renderer, `(async () => {
+    for (let i = 0; i < 6; i++) {
+      if (document.activeElement === document.querySelector('#editor .cm-content')) return true
+      await new Promise(resolve => requestAnimationFrame(resolve))
+    }
+    return document.activeElement === document.querySelector('#editor .cm-content')
+  })()`)
   check('切回渲染后聚焦编辑区', visual, String(visual))
   await evaluate(renderer, SELECT_ALL)
   const copied = JSON.parse(await evaluate(renderer, COPY_PROBE))
@@ -1832,15 +1840,17 @@ function main() {
       await clickLine(renderer, '待办未完成')
       await pressKey(renderer, 'Home', 'Home', 36)
       await pressKey(renderer, 'End', 'End', 35, 8)
-      await sleep(400)
-      // 色带是 CodeMirror 自己画的图层，第一下量的时候可能还没进 DOM（焦点与重排的时序）。
-      // 量不到就重新选一次再量，不能拿 null 当结论（2026-10-07 连续跑时假红过）。
+      const selectedTask = await evaluate(renderer, `(() => {
+        const view = document.querySelector('#editor .cm-content').cmTile.root.view
+        const range = view.state.selection.main
+        return { from: range.from, to: range.to, text: view.state.sliceDoc(range.from, range.to) }
+      })()`)
+      check('选区色带验收确实选中了待办正文', selectedTask.from < selectedTask.to && selectedTask.text.includes('待办未完成'), JSON.stringify(selectedTask))
+      // 色带在测量帧创建。只观察已建立的选区，不反复点击把它清空，避免隐藏窗口
+      // 每秒一帧时恰好总在空选区阶段测量；不以等待掩盖键盘选择失败。
       let selection = JSON.parse(await evaluate(renderer, SELECTION_READABILITY))
       for (let i = 0; i < 6 && selection.band === null; i++) {
-        await clickLine(renderer, '待办未完成')
-        await pressKey(renderer, 'Home', 'Home', 36)
-        await pressKey(renderer, 'End', 'End', 35, 8)
-        await sleep(400)
+        await evaluate(renderer, 'new Promise(resolve => requestAnimationFrame(() => resolve(true)))')
         selection = JSON.parse(await evaluate(renderer, SELECTION_READABILITY))
       }
       check('深色主题下选中文字仍看得清',
@@ -1926,7 +1936,11 @@ function main() {
 
       await checkListTableExport(renderer)
       await checkPunctuationEmphasis(renderer)
-      await checkSelectionVisibility(renderer)
+      if (process.argv.includes('--skip-selection-screenshots')) {
+        console.log('未执行：逐主题选区像素验收（--skip-selection-screenshots）')
+      } else {
+        await checkSelectionVisibility(renderer)
+      }
       reportChecks()
     } finally {
       stopVerifyApp(udd)

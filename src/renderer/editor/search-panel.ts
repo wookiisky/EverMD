@@ -9,11 +9,12 @@
 // core → search-panel → editor → core 的循环依赖。
 
 import { Decoration, EditorView, type DecorationSet } from '@codemirror/view'
-import { ChangeSet, RangeSetBuilder, type StateEffect } from '@codemirror/state'
+import { ChangeSet, RangeSetBuilder, type StateEffect, type Text } from '@codemirror/state'
 import { getEditorView } from './editor'
 import { setSearchHighlight } from './search-highlight'
 import { getUiLanguage, type UiLanguage } from '../ui-language'
 import { SourceInputEvent } from './editor-source-input'
+import { documentText } from './document-text'
 
 export class SearchPanel {
   private container: HTMLDivElement
@@ -29,6 +30,14 @@ export class SearchPanel {
   private matches: { from: number; to: number }[] = []
   private currentIndex = -1
   private visible = false
+  /** 仅保留当前查找文档；Text 表示渲染模式，字符串表示源码模式。 */
+  private cachedDocument: Text | string | null = null
+  /** 当前文档的大小写无关查找文本，连续修改查询词时复用。 */
+  private cachedLowerText = ''
+  /** 当前匹配集合所依据的文档，编辑和模式切换后必须重新计算。 */
+  private matchedDocument: Text | string | null = null
+  /** 当前匹配集合对应的原查询词。 */
+  private matchedQuery = ''
 
   /** 明确切换搜索结果前，收妥源码模式的导航起点。 */
   constructor(private readonly beforeNavigate: () => void = () => {}) {
@@ -138,6 +147,10 @@ export class SearchPanel {
     this.matches = []
     this.currentIndex = -1
     this.countEl.textContent = ''
+    this.cachedDocument = null
+    this.cachedLowerText = ''
+    this.matchedDocument = null
+    this.matchedQuery = ''
     const sourceEditor = this.getSourceEditor()
     if (sourceEditor) {
       sourceEditor.focus()
@@ -148,6 +161,7 @@ export class SearchPanel {
   }
 
   private replaceCurrent(): void {
+    this.refreshChangedMatches()
     if (this.currentIndex < 0 || this.currentIndex >= this.matches.length) return
     const sourceEditor = this.getSourceEditor()
     const replacement = this.replaceInput.value
@@ -167,6 +181,7 @@ export class SearchPanel {
   }
 
   private replaceAll(): void {
+    this.refreshChangedMatches()
     const query = this.input.value
     if (!query || this.matches.length === 0) return
     const sourceEditor = this.getSourceEditor()
@@ -207,6 +222,24 @@ export class SearchPanel {
     return button
   }
 
+  /** 文本没有改变时只重新查找查询词，不再复制全文并转换大小写。 */
+  private lowerText(doc: Text | string): string {
+    if (this.cachedDocument !== doc) {
+      this.cachedDocument = doc
+      this.cachedLowerText = (typeof doc === 'string' ? doc : documentText(doc)).toLowerCase()
+    }
+    return this.cachedLowerText
+  }
+
+  /** 导航和替换前核对当前正文，避免旧标签的匹配位置落入新文件。 */
+  private refreshChangedMatches(): boolean {
+    const source = this.getSourceEditor()
+    const doc = source ? source.value : getEditorView()?.state.doc
+    if (doc === undefined || (doc === this.matchedDocument && this.input.value === this.matchedQuery)) return false
+    this.search()
+    return true
+  }
+
   private search(): void {
     const query = this.input.value
     const sourceEditor = this.getSourceEditor()
@@ -220,6 +253,8 @@ export class SearchPanel {
 
     this.matches = []
     this.currentIndex = -1
+    this.matchedDocument = view.state.doc
+    this.matchedQuery = query
 
     if (!query) {
       this.clearDecorations()
@@ -228,7 +263,7 @@ export class SearchPanel {
     }
 
     const lowerQuery = query.toLowerCase()
-    const text = view.state.doc.toString().toLowerCase()
+    const text = this.lowerText(view.state.doc)
     let idx = 0
     while ((idx = text.indexOf(lowerQuery, idx)) !== -1) {
       this.matches.push({ from: idx, to: idx + query.length })
@@ -253,6 +288,8 @@ export class SearchPanel {
     this.clearDecorations()
     this.matches = []
     this.currentIndex = -1
+    this.matchedDocument = sourceEditor.value
+    this.matchedQuery = query
 
     if (!query) {
       this.updateCount()
@@ -260,7 +297,7 @@ export class SearchPanel {
     }
 
     const lowerQuery = query.toLowerCase()
-    const text = sourceEditor.value.toLowerCase()
+    const text = this.lowerText(sourceEditor.value)
     let idx = 0
     while ((idx = text.indexOf(lowerQuery, idx)) !== -1) {
       this.matches.push({ from: idx, to: idx + query.length })
@@ -301,6 +338,7 @@ export class SearchPanel {
   }
 
   private next(): void {
+    if (this.refreshChangedMatches()) return
     if (this.matches.length === 0) return
     this.currentIndex = (this.currentIndex + 1) % this.matches.length
     const sourceEditor = this.getSourceEditor()
@@ -317,6 +355,7 @@ export class SearchPanel {
   }
 
   private prev(): void {
+    if (this.refreshChangedMatches()) return
     if (this.matches.length === 0) return
     this.currentIndex = (this.currentIndex - 1 + this.matches.length) % this.matches.length
     const sourceEditor = this.getSourceEditor()

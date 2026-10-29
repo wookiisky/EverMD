@@ -1,0 +1,8 @@
+{
+  "zh": {
+    "statistics": "{characters} 字 · {tokens} 词 · {paragraphs} 段"
+  },
+  "en": {
+    "statistics": "{characters} chars · {tokens} words · {paragraphs} paragraphs"
+  }
+}

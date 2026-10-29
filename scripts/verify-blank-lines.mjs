@@ -5,7 +5,7 @@ import { build } from 'esbuild'
 const bundle = await build({
   stdin: {
     contents: `export { blankLineNumbers, setHideBlankLinesEffect, hideBlankLinesField } from './src/renderer/editor/blank-line-visibility';
-      export { stateExtensions } from './src/renderer/editor/state';
+      export { stateExtensions, markdownParser } from './src/renderer/editor/state';
       export { livePreview, livePreviewField, setEditorFocus, setCleanExport } from './src/renderer/editor/live-preview';
       export { EditorState, EditorSelection } from '@codemirror/state';
       export { undo, redo, undoDepth, redoDepth } from '@codemirror/commands';`,
@@ -13,7 +13,7 @@ const bundle = await build({
   },
   bundle: true, write: false, platform: 'node', format: 'esm', logLevel: 'silent'
 })
-const { blankLineNumbers, setHideBlankLinesEffect, hideBlankLinesField, stateExtensions,
+const { blankLineNumbers, setHideBlankLinesEffect, hideBlankLinesField, stateExtensions, markdownParser,
   livePreview, livePreviewField, setEditorFocus, setCleanExport, EditorState, EditorSelection,
   undo, redo, undoDepth, redoDepth } =
   await import('data:text/javascript;base64,' + Buffer.from(bundle.outputFiles[0].text).toString('base64'))
@@ -131,3 +131,72 @@ assert(redo({ state, dispatch }))
 assert.equal(state.doc.toString(), edited)
 assert.deepEqual(hiddenLines(state), [])
 console.log('通过：用户编辑和撤销重做独立于空行视图开关')
+
+// 每笔真实事务之后与完整解析逐次比较，包含会把保护范围一直改到文末的编辑。
+const editCases = [
+  ['普通文字与换行', '标题\n\n正文\n\n尾段', state => [{ from: 1, insert: '新\n' }, { from: state.doc.length, insert: '\n\n末尾' }]],
+  ['删除围栏开头', '```js\n\n正文\n```\n\n尾段\n', () => [{ from: 0, to: 3 }]],
+  ['删除围栏结尾', '```js\n\n正文\n```\n\n尾段\n', state => { const start = state.doc.toString().lastIndexOf('```'); return [{ from: start, to: start + 3 }] }],
+  ['文首插入未闭合围栏', '甲\n\n乙\n\n丙\n', () => [{ from: 0, insert: '```\n' }]],
+  ['HTML结束符改变', '<pre>\n\n甲\n</pre>\n\n乙\n', state => { const start = state.doc.toString().indexOf('</pre>'); return [{ from: start, to: start + 6 }] }],
+  ['属性区闭合改变', '---\ntitle: 测试\n\n---\n\n甲\n', state => { const start = state.doc.toString().lastIndexOf('---'); return [{ from: start, to: start + 3 }] }],
+  ['公式闭合改变', '$$\nx=1\n\n$$\n\n甲\n', state => { const start = state.doc.toString().lastIndexOf('$$'); return [{ from: start, to: start + 2 }] }],
+  ['引用中代码与空行', '> ```\n>\n> 甲\n> ```\n>\n尾段', () => [{ from: 2, to: 5 }, { from: 14, insert: '新' }]],
+  ['CRLF与末尾空行', '甲\r\n\r\n```\r\n\r\n乙\r\n```\r\n', state => [{ from: 0, insert: '\r\n' }, { from: state.doc.length, insert: '\r\n' }]],
+  ['全文替换', '甲\n\n乙', state => [{ from: 0, to: state.doc.length, insert: '<!--\n\n未闭合\n' }]],
+]
+const unchangedTail = Array.from({ length: 100 }, (_, index) => `保持不变的第${index}段\n\n`).join('')
+for (const [name, text, change] of editCases) {
+  // 长后缀确保有可复用片段，不能只用短夹具让增量解析自然退回全文解析。
+  let current = EditorState.create({ doc: text + '\n\n' + unchangedTail, extensions: [stateExtensions(), livePreview] })
+  current = current.update({ effects: setHideBlankLinesEffect.of(true) }).state
+  current = current.update({ changes: change(current), userEvent: 'input.type' }).state
+  assert.deepEqual(hiddenLines(current), blankLineNumbers(current.doc.toString()), `${name}：编辑后与完整解析一致`)
+  const dispatch = transaction => { current = transaction.state }
+  assert(undo({ state: current, dispatch }), `${name}：可以撤销`)
+  assert.deepEqual(hiddenLines(current), blankLineNumbers(current.doc.toString()), `${name}：撤销后与完整解析一致`)
+  assert(redo({ state: current, dispatch }), `${name}：可以重做`)
+  assert.deepEqual(hiddenLines(current), blankLineNumbers(current.doc.toString()), `${name}：重做后与完整解析一致`)
+}
+console.log('通过：多处编辑、语法保护边界、全文替换、撤销和重做逐笔与完整解析一致')
+
+// 完整解析器的调用记录只观察增量片段是否被利用，不把机器速度当正确性断言。
+const parse = markdownParser.parse
+const recordedParse = action => {
+  const calls = []
+  markdownParser.parse = function (input, fragments, ranges) {
+    calls.push(fragments?.length ?? 0)
+    return parse.call(this, input, fragments, ranges)
+  }
+  try { action(); return calls } finally { markdownParser.parse = parse }
+}
+const longDocument = Array.from({ length: 500 }, (_, index) => `第${index}段正文\n\n`).join('')
+let incremental = EditorState.create({ doc: longDocument, extensions: [stateExtensions(), livePreview] })
+incremental = incremental.update({ effects: setHideBlankLinesEffect.of(true) }).state
+const incrementalCalls = recordedParse(() => {
+  incremental = incremental.update({ changes: [{ from: 4, insert: '新' }, { from: incremental.doc.length - 8, insert: '末' }] }).state
+})
+assert(incrementalCalls.some(count => count > 0), '普通局部编辑复用未修改部分的完整语法树')
+assert.deepEqual(hiddenLines(incremental), blankLineNumbers(incremental.doc.toString()))
+assert.deepEqual(recordedParse(() => {
+  incremental = incremental.update({ selection: { anchor: 12 } }).state
+}), [], '只移动光标不重复调用完整解析器')
+
+for (const [name, suspend, resume] of [
+  ['关闭隐藏空行', setHideBlankLinesEffect.of(false), setHideBlankLinesEffect.of(true)],
+  ['干净导出', setCleanExport.of(true), setCleanExport.of(false)],
+]) {
+  incremental = incremental.update({ effects: suspend }).state
+  assert.deepEqual(recordedParse(() => {
+    incremental = incremental.update({ changes: { from: 0, insert: '```\n' } }).state
+    incremental = incremental.update({ changes: { from: incremental.doc.length, insert: '\n\n' } }).state
+  }), [], `${name}期间不解析空行保护树`)
+  incremental = incremental.update({ effects: resume }).state
+  assert.deepEqual(hiddenLines(incremental), blankLineNumbers(incremental.doc.toString()), `${name}后恢复使用当前文档而非旧片段`)
+}
+
+let otherDocument = EditorState.create({ doc: '其他标签\n\n尾段', extensions: [stateExtensions(), livePreview] })
+otherDocument = otherDocument.update({ effects: setHideBlankLinesEffect.of(true) }).state
+assert.deepEqual(hiddenLines(otherDocument), [2], '另一标签的空行候选独立')
+assert.deepEqual(hiddenLines(incremental), blankLineNumbers(incremental.doc.toString()), '切回原标签仍保留自己的保护范围')
+console.log('通过：局部编辑复用完整树，选区与暂停期间不解析，恢复及标签数据独立')

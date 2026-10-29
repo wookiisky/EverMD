@@ -24,14 +24,15 @@
 import { Decoration, EditorView, ViewPlugin, WidgetType, type DecorationSet, type ViewUpdate } from '@codemirror/view'
 import { EditorState, RangeSetBuilder, StateEffect, StateField, type Extension } from '@codemirror/state'
 import { forceParsing, syntaxTree } from '@codemirror/language'
-import type { SyntaxNode, SyntaxNodeRef } from '@lezer/common'
+import type { SyntaxNode, SyntaxNodeRef, Tree } from '@lezer/common'
 import katex from 'katex'
-import { scanMath, excludedRanges, frontmatterRange, type Excluded } from './math-scan'
+import type { Excluded } from './math-scan'
 import { renderMermaid, attachDiagramZoom, detachDiagramZoom, isDiagramZoomed } from './mermaid-bridge'
 import { sanitizeHTML, cleanStyle } from './html-sanitize'
-import { footnoteDefinitions, footnoteNumbers, FOOTNOTE_REF_RE } from './footnotes'
 import { isChinese } from '../ui-language'
-import { hideBlankLinesField, hiddenBlankLineNumbers } from './blank-line-visibility'
+import { hideBlankLinesField, hiddenBlankLineNumbers, updateBlankLineAnalysis } from './blank-line-visibility'
+import { documentText } from './document-text'
+import { documentAnalysis, previewAnalysis } from './document-analysis'
 
 /** 给区间加样式类，不隐藏任何字符。 */
 const MARK = Decoration.mark.bind(Decoration)
@@ -433,13 +434,9 @@ function listDepth(node: SyntaxNode): number {
 
 /** 扫描公式并压入装饰。 */
 function collectMath(state: EditorState, ranges: DecorationRange[]): void {
-  const text = state.doc.toString()
-
   // 排除区：属性区、代码块、行内代码、行内 HTML。
   // 这些地方里的 `$x$` 不该渲染成公式——代码就是代码，Obsidian 也是这么处理的。
-  const excluded: Excluded[] = excludedRanges(text, syntaxTree(state))
-
-  for (const range of scanMath(text, excluded)) {
+  for (const range of previewAnalysis(state.doc, syntaxTree(state)).math) {
     // 块公式：光标落进去就退回源码，就地改（行内公式的判据见上，保持不露）
     if (isActiveLine(state, range.from) || (range.block && isBlockActive(state, range.from, range.to))) {
       const delim = range.block ? 2 : 1
@@ -463,8 +460,8 @@ function collectMath(state: EditorState, ranges: DecorationRange[]): void {
 /** `==高亮==` 的匹配。不吃跨行，也不吃空的 `====`。 */
 const HIGHLIGHT_RE = /(?<![=])==(?!=)([^=\n]+?)==(?!=)/g
 
-function collectHighlight(state: EditorState, ranges: DecorationRange[], excluded: Excluded[]): void {
-  const text = state.doc.toString()
+function collectHighlight(state: EditorState, ranges: DecorationRange[], excluded: readonly Excluded[]): void {
+  const text = documentText(state.doc)
   const inExcluded = (pos: number) => excluded.some((e) => pos >= e.from && pos < e.to)
 
   HIGHLIGHT_RE.lastIndex = 0
@@ -597,7 +594,7 @@ const POINTER_EVENTS = new Set([
 ])
 
 function collectMermaid(state: EditorState, ranges: DecorationRange[], front: Range | null): void {
-  const text = state.doc.toString()
+  const text = documentText(state.doc)
   iterateContent(state, front, (node) => {
       if (node.name !== 'FencedCode') return
       // 第一行是 ```mermaid 才画
@@ -893,32 +890,26 @@ class FootnoteRefWidget extends WidgetType {
 }
 
 function collectFootnotes(state: EditorState, ranges: DecorationRange[], front: Range | null): void {
-  const text = state.doc.toString()
-  const numbers = footnoteNumbers(text)
-  const definitions = footnoteDefinitions(text)
+  const analysis = documentAnalysis(state.doc)
+  const numbers = analysis.footnoteNumbers
+  const definitions = analysis.footnoteDefinitions
 
   // 引用：整段 `[^note]` 换成上标数字
-  FOOTNOTE_REF_RE.lastIndex = 0
-  let match: RegExpExecArray | null
-  while ((match = FOOTNOTE_REF_RE.exec(text)) !== null) {
-    const from = match.index
-    const to = from + match[0].length
+  for (const { from, to, label } of analysis.footnoteReferences) {
     if (front && inRange(front, from)) continue
-    if (definitions.has(match[1]) === false && numbers.has(match[1]) === false) continue
+    if (definitions.has(label) === false && numbers.has(label) === false) continue
     if (isActiveLine(state, from)) continue
     ranges.push({
       from,
       to,
-      deco: Decoration.replace({ widget: new FootnoteRefWidget(match[1], numbers.get(match[1]) ?? 1) }),
+      deco: Decoration.replace({ widget: new FootnoteRefWidget(label, numbers.get(label) ?? 1) }),
     })
   }
 
   // 定义行：压淡，不隐藏（隐藏了用户就看不到自己写了什么）
-  for (let n = 1; n <= state.doc.lines; n++) {
-    const line = state.doc.line(n)
-    if (!/^ {0,3}\[\^[^\]\s]+\]:/.test(line.text)) continue
-    if (front && inRange(front, line.from)) continue
-    ranges.push({ from: line.from, to: line.from, deco: BLOCK('cm-md-footnote-def') })
+  for (const from of analysis.footnoteDefinitionLines) {
+    if (front && inRange(front, from)) continue
+    ranges.push({ from, to: from, deco: BLOCK('cm-md-footnote-def') })
   }
 }
 
@@ -1282,11 +1273,10 @@ let currentFlash: { from: number; to: number } | null = null
 
 function buildDecorations(state: EditorState, flash: { from: number; to: number } | null): DecorationSet {
   const ranges: DecorationRange[] = []
-  const text = state.doc.toString()
-  const excluded = excludedRanges(text, syntaxTree(state))
+  const excluded = previewAnalysis(state.doc, syntaxTree(state)).excluded
   // 属性区的区间要算一次、多处用：压淡它、把它里面的 YAML 排出 markdown 排版、
   // 不让它的 `---` 被当成分页。
-  const front = frontmatterRange(text)
+  const front = documentAnalysis(state.doc).front
 
   if (flash && flash.to <= state.doc.length) {
     ranges.push({ from: flash.from, to: flash.to, deco: MARK({ class: 'cm-md-jump-flash' }) })
@@ -1351,6 +1341,7 @@ export const livePreviewField = StateField.define<DecorationSet>({
     const hideBlankLines = tr.state.field(hideBlankLinesField, false) ?? false
     const hidBlankLines = tr.startState.field(hideBlankLinesField, false) ?? false
     if (!tr.docChanged && !tr.selection && !flash && !parsed && !rebased && focused === wasFocused && clean === wasClean && hideBlankLines === hidBlankLines) return deco
+    updateBlankLineAnalysis(tr, clean)
     return buildDecorations(tr.state, flashValue)
   },
   provide: (field) => EditorView.decorations.from(field),
@@ -1373,37 +1364,63 @@ export const decorationsRefreshEffect = StateEffect.define<null>()
  * 插件直接崩掉（`Calls to EditorView.update are not allowed while an update is in progress`）。
  */
 const parseRefresh = ViewPlugin.fromClass(class {
-  private parsed = 0
+  /** 上次观察到的显示树，文档不变时后台解析也会替换它。 */
+  private tree: Tree | null = null
+  /** 定时器排队和同步解析回调期间都保持占用，合并重入刷新。 */
   private pending = false
+  /** 当前视口解析预算耗尽后的重试次数。 */
   private attempts = 0
+  /** 销毁时取消尚未执行的工作。 */
+  private timer: ReturnType<typeof setTimeout> | null = null
+  /** 销毁后的同步回调也不得继续派发事务。 */
+  private destroyed = false
+
+  /** 只有树推进或视口尚未覆盖时才安排刷新。 */
   update(update: ViewUpdate) {
     const tree = syntaxTree(update.state)
-    const grew = tree.length > this.parsed
-    this.parsed = tree.length
+    const changed = tree !== this.tree
+    this.tree = tree
+    if (update.docChanged || update.viewportChanged) this.attempts = 0
     const viewportEnd = update.view.viewport.to
     if (tree.length >= viewportEnd) {
       this.attempts = 0
-      if (grew) this.later(update.view, null)
+      // 输入与选区事务已按当前树构造装饰，只有后台解析推进才需要额外刷新。
+      const rebuilt = update.startState.field(livePreviewField, false) !== update.state.field(livePreviewField, false)
+      if (changed && !rebuilt) this.later(update.view)
       return
     }
-    this.later(update.view, viewportEnd)
+    this.later(update.view)
   }
-  private later(view: EditorView, parseTo: number | null) {
-    if (this.pending) return
+
+  /** 执行时读取当前状态和视口，避免队列中的旧文件位置继续驱动解析。 */
+  private later(view: EditorView) {
+    if (this.pending || this.destroyed) return
     this.pending = true
-    setTimeout(() => {
-      this.pending = false
-      if (!view.dom.isConnected) return
-      if (parseTo !== null) forceParsing(view, parseTo)
-      view.dispatch({ effects: decorationsRefreshEffect.of(null) })
+    this.timer = setTimeout(() => {
+      this.timer = null
+      try {
+        if (this.destroyed || !view.dom.isConnected) return
+        if (syntaxTree(view.state).length < view.viewport.to) forceParsing(view, view.viewport.to)
+        if (this.destroyed) return
+        view.dispatch({ effects: decorationsRefreshEffect.of(null) })
+      } finally {
+        this.pending = false
+      }
       // `forceParsing` 是有时间预算的：机器忙的时候一次推不到视口末尾，
       // 而装饰是照着语法树算的，树没铺到的地方就会露出原始 markdown。
       // 所以要一直补到铺满为止（次数封顶，避免文档本身有问题时空转）。
-      if (syntaxTree(view.state).length < view.viewport.to && this.attempts < 40) {
+      if (!this.destroyed && syntaxTree(view.state).length < view.viewport.to && this.attempts < 40) {
         this.attempts += 1
-        this.later(view, view.viewport.to)
+        this.later(view)
       }
     }, 0)
+  }
+
+  /** 不让已销毁编辑器的定时器继续持有视图。 */
+  destroy() {
+    this.destroyed = true
+    if (this.timer !== null) clearTimeout(this.timer)
+    this.timer = null
   }
 })
 

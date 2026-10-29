@@ -45,7 +45,19 @@
     "verify:sidebars": "node scripts/verify-sidebars.mjs",
     "verify:navigation-history": "node scripts/verify-navigation-history.mjs",
     "verify:navigation-ui": "node scripts/verify-navigation-ui.mjs",
-    "verify:editor-navigation": "node scripts/verify-editor-navigation.mjs"
+    "verify:editor-navigation": "node scripts/verify-editor-navigation.mjs",
+    "verify:preview-analysis": "node scripts/verify-preview-analysis.mjs",
+    "verify:document-install": "node scripts/verify-document-install.mjs",
+    "verify:document-statistics": "node scripts/verify-document-statistics.mjs",
+    "verify:document-file-content": "node scripts/verify-document-file-content.mjs",
+    "verify:statistics-scheduler": "node scripts/verify-statistics-scheduler.mjs && node scripts/verify-statistics-integration.mjs",
+    "verify:document-outline": "node scripts/verify-document-outline.mjs",
+    "verify:file-panel-model": "node scripts/verify-file-panel-model.mjs",
+    "verify:file-panel-view": "node scripts/verify-file-panel-window.mjs && node scripts/verify-file-panel-view.mjs",
+    "verify:startup": "node scripts/verify-startup.mjs",
+    "verify:editor-performance": "node scripts/verify-editor-performance.mjs",
+    "verify:performance-ui": "node scripts/verify-performance-ui.mjs",
+    "verify:opening-performance": "node scripts/verify-opening-performance.mjs"
   },
   "dependencies": {
     "@codemirror/commands": "^6.11.1",

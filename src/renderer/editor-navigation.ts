@@ -51,6 +51,10 @@ export class EditorNavigation {
   private queue: Promise<void> = Promise.resolve()
   /** 只缓存当前文本框内容，供一次输入的偏移映射使用。 */
   private sourceText = ''
+  /** 当前源码值对应的不可变文本，选择变化复用，输入只替换受影响片段。 */
+  private sourceDocument = Text.empty
+  /** 文本结构所属的完整源码值，与历史映射的输入前基线分开。 */
+  private sourceDocumentValue = ''
   /** 最后已观察选区，过滤异步 select 事件与重复通知。 */
   private observed: NavigationAnchor | null = null
   /** 注销后不再执行排队动作。 */
@@ -148,6 +152,9 @@ export class EditorNavigation {
     this.options.source.removeEventListener('selectionchange', this.sourceSelected)
     this.options.source.removeEventListener('input', this.sourceChanged)
     this.history.dispose()
+    this.sourceText = ''
+    this.sourceDocumentValue = ''
+    this.sourceDocument = Text.empty
   }
 
   /** 回放与程序化载入期间，事件只用于同步快照。 */
@@ -158,8 +165,17 @@ export class EditorNavigation {
   /** 返回当前模式的文本，行号始终按源码计算。 */
   private document(): Text {
     return this.options.isSourceMode()
-      ? Text.of(this.options.source.value.split('\n'))
+      ? this.readSourceDocument(this.options.source.value)
       : getEditorHandle()!.getView().state.doc
+  }
+
+  /** 仅程序化替换或首次进入源码时重建，纯选区变化不重复拆分全文。 */
+  private readSourceDocument(value: string): Text {
+    if (this.sourceDocumentValue !== value) {
+      this.sourceDocument = Text.of(value.split('\n'))
+      this.sourceDocumentValue = value
+    }
+    return this.sourceDocument
   }
 
   /** 文件路径决定身份，无路径文档才按标签编号区分。 */
@@ -236,16 +252,24 @@ export class EditorNavigation {
     const previous = this.sourceText
     this.history.cancelPending()
     if (!this.isSuppressed()) {
-      let start = 0
-      while (start < previous.length && start < value.length && previous[start] === value[start]) start++
-      let oldEnd = previous.length
-      let newEnd = value.length
-      while (oldEnd > start && newEnd > start && previous[oldEnd - 1] === value[newEnd - 1]) { oldEnd--; newEnd-- }
-      const map = event instanceof SourceInputEvent
-        ? (position: number) => event.changes.mapPos(position, 1)
-        : (position: number) => position < start ? position : position >= oldEnd ? position + newEnd - oldEnd : newEnd
+      const previousDocument = this.readSourceDocument(previous)
+      let map: (position: number) => number
+      if (event instanceof SourceInputEvent) {
+        // 批量替换已给出精确变更，既无需扫描公共前后缀，也不重建未变化的行。
+        this.sourceDocument = event.changes.apply(previousDocument)
+        map = position => event.changes.mapPos(position, 1)
+      } else {
+        let start = 0
+        while (start < previous.length && start < value.length && previous[start] === value[start]) start++
+        let oldEnd = previous.length
+        let newEnd = value.length
+        while (oldEnd > start && newEnd > start && previous[oldEnd - 1] === value[newEnd - 1]) { oldEnd--; newEnd-- }
+        this.sourceDocument = previousDocument.replace(start, oldEnd, Text.of(value.slice(start, newEnd).split('\n')))
+        map = position => position < start ? position : position >= oldEnd ? position + newEnd - oldEnd : newEnd
+      }
+      this.sourceDocumentValue = value
       const identity = this.options.getIdentity()
-      const doc = this.document()
+      const doc = this.sourceDocument
       if (identity) this.history.updateDocument(identity, anchor => withPositions(anchor, doc, map(anchor.anchor), map(anchor.head)))
       this.synchronize()
       if (this.observed) this.history.updateCurrent(this.observed, true)

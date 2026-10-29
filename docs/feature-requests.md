@@ -190,6 +190,16 @@ Declined. Drag affordances have been rejected elsewhere in the product (panel re
 
 **Status:** The panel's right edge offers a lightweight drag hot zone (no permanent handle icon, hover stripe only, per design.md) to resize between 200px and 420px. The choice persists locally, the default stays 220px, and the hot zone hides with the panel. The floor is 200 because the window controls sit in this column's top row: at 180 the last button would land on the pixel where the tab strip starts.
 
+### 编辑、侧栏与启动的整体性能优化
+
+**来源：** 2026-10-29 用户要求全面排查并优化性能，确认统一实施范围。
+
+**范围：** 复用文档分析和完整空行语法树；合并新文档安装时的路径与视图配置；减少源码导航和查找的重复全文处理；统计保持原口径并合并展示更新；大纲和文件列表复用节点并校验异步刷新版本；启动正文交付不等待目录列表。
+
+**判断：** 保持文本优先、撤销隔离、外部修改冲突和现有渲染规则。显示惰性树、空行保护完整树和列表重编号局部解析分别保留，不为了共享缓存改变契约。已建立状态层、真实离屏窗口及外壳回归入口，测量边界见 [性能验证](performance.md)。本地 macOS 验证不替代下述 Windows 特定问题的复现，也不表示已发布。
+
+**后续范围（2026-10-29 用户确认）：** 修复慢目录阻塞其他目录已完成结果的问题；大目录按视口挂载文件条目，保留完整目录、排序、双侧滚动、原生右键及 Tab 遍历；大文档统计分段执行，重复保存快照复用当前内容的行尾编码，空行分析跳过确定不存在的公式。保持现有大文件自动源码阈值，不改保存、冲突和标签磁盘校验顺序。目录枚举已经使用 `withFileTypes`，测量表明首屏成本主要在 DOM 与布局，因此本轮不引入后台目录服务。
+
 ### Windows startup performance
 
 **Sources:** [#32](https://github.com/marswaveai/ColaMD/issues/32)

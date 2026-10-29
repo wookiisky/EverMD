@@ -1,0 +1,16 @@
+{
+  "zh": {
+    "empty": "这个文件夹是空的",
+    "back": "返回",
+    "parent": "返回上级目录",
+    "expand": "展开 {name}",
+    "collapse": "收起 {name}"
+  },
+  "en": {
+    "empty": "This folder is empty",
+    "back": "Back",
+    "parent": "Go to parent directory",
+    "expand": "Expand {name}",
+    "collapse": "Collapse {name}"
+  }
+}

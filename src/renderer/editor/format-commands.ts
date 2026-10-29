@@ -7,6 +7,7 @@
 // 好处是可预测、可撤销，而且**只动用户选中的那段字节**，其余部分不受影响。
 
 import type { EditorView } from '@codemirror/view'
+import { documentText } from './document-text'
 
 export type FormatCommandId =
   | 'bold'
@@ -31,10 +32,10 @@ const WRAP_COMMANDS: Record<string, MarkerSpec> = {
 
 /** 选区是否已经被这对标记包裹（含标记自身被选中一半的情况）。 */
 function isWrapped(view: EditorView, from: number, to: number, wrap: string): boolean {
-  const text = view.state.doc.toString()
+  const doc = view.state.doc
   const len = wrap.length
-  const before = text.slice(Math.max(0, from - len), from)
-  const after = text.slice(to, to + len)
+  const before = doc.sliceString(Math.max(0, from - len), from)
+  const after = doc.sliceString(to, Math.min(doc.length, to + len))
   return before === wrap && after === wrap
 }
 
@@ -113,7 +114,7 @@ export function wrapLink(view: EditorView, url: string): void {
 
 /** 选区是否已经是链接，是则返回其外沿区间，用于「再按一次取消」。 */
 export function linkRangeAt(view: EditorView, from: number, to: number): { from: number; to: number } | null {
-  const text = view.state.doc.toString()
+  const text = documentText(view.state.doc)
   const re = /\[([^\]]*)\]\((\S+?)\)/g
   let m: RegExpExecArray | null
   while ((m = re.exec(text)) !== null) {

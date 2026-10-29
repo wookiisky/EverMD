@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { build } from 'esbuild'
 
 const bundle = await build({
-  stdin: { contents: `export {EditorNavigation} from './src/renderer/editor-navigation'; export {SearchPanel} from './src/renderer/editor/search-panel';`, resolveDir: process.cwd() },
+  stdin: { contents: `export {EditorNavigation} from './src/renderer/editor-navigation'; export {SearchPanel} from './src/renderer/editor/search-panel'; export {SourceInputEvent} from './src/renderer/editor/editor-source-input'; export {runFormatCommand} from './src/renderer/editor/format-commands'; export {Text,ChangeSet} from '@codemirror/state';`, resolveDir: process.cwd() },
   bundle: true, write: false,
   platform: 'node', format: 'esm', logLevel: 'silent',
   plugins: [{ name: 'editor-host', setup(build) {
@@ -29,7 +29,7 @@ const host = globalThis.navigationHost = { listener: null, view: {
     if (spec.effects) scrollEffects++
     host.listener?.({ state: this.state, startState, changes: transaction.changes, docChanged: transaction.docChanged, selectionSet: !!spec.selection, transactions: [transaction], view: this }) },
 } }
-const { EditorNavigation, SearchPanel } = await import('data:text/javascript;base64,' + Buffer.from(bundle.outputFiles[0].text).toString('base64'))
+const { EditorNavigation, SearchPanel, SourceInputEvent, runFormatCommand, Text: SourceText, ChangeSet: SourceChanges } = await import('data:text/javascript;base64,' + Buffer.from(bundle.outputFiles[0].text).toString('base64'))
 let identity = { filePath: '/a.md', tabId: 'one' }, sourceMode = false, nextResult = 'ok', opens = []
 const nav = new EditorNavigation({ source, getIdentity: () => identity, isSourceMode: () => sourceMode,
   isProgrammatic: () => false, open: async anchor => { opens.push(anchor.filePath); if (nextResult === 'ok') identity = {filePath:anchor.filePath,tabId:anchor.tabId}; return nextResult; } })
@@ -227,3 +227,101 @@ state=state.update({effects:readonly.editableCompartment.reconfigure(readonly.Ed
 assert.equal(readonly.undo(readonlyView),true,'恢复编辑后仍可正常撤销')
 assert.equal(state.doc.toString(),'原文')
 console.log('通过：明确跳转收妥起点、只读命令/事务保护、恢复编辑后撤销栈保持')
+
+
+// 长文档源码选择不重新构建全文；真实编辑只构建改动片段，历史仍使用新正文。
+const longSource = Array.from({length: 4000}, (_, index) => `段落 ${index}：${'正文'.repeat(20)}`).join('\n')
+sourceMode = true; identity = {filePath: '/large-source.md', tabId: 'large'}
+source.value = longSource; source.setSelectionRange(0, 0, 'forward')
+let sourceProgrammatic = false
+const cachedNav = new EditorNavigation({source, getIdentity: () => identity, isSourceMode: () => sourceMode,
+  isProgrammatic: () => sourceProgrammatic, open: async () => 'ok'})
+cachedNav.initialize()
+const originalTextOf = SourceText.of
+let fullSourceBuilds = 0
+SourceText.of = function(lines) {
+  if (lines.length > 1000) fullSourceBuilds++
+  return originalTextOf.call(this, lines)
+}
+try {
+  for (let index = 1; index <= 20; index++) {
+    source.setSelectionRange(index, index + 2, 'backward')
+    source.dispatchEvent(new Event('select'))
+  }
+  assert.equal(fullSourceBuilds, 0, '纯源码选区更新复用现有文本结构，不重建长文档')
+  source.value = longSource.slice(0, 10) + '新增\n' + longSource.slice(10)
+  source.setSelectionRange(13, 13, 'forward'); source.dispatchEvent(new Event('input'))
+  assert.equal(cachedNav.document().toString(), source.value, '原生输入后的导航文本与实际正文一致')
+  assert.equal(fullSourceBuilds, 0, '原生局部编辑只创建变更片段')
+  const changes = SourceChanges.of([{from: 5, to: 8, insert: '替换'}, {from: 2000, to: 2010, insert: '批量\n修改'}], source.value.length)
+  source.value = changes.apply(cachedNav.document()).toString()
+  source.setSelectionRange(0, 0, 'forward'); source.dispatchEvent(new SourceInputEvent(changes))
+  assert.equal(cachedNav.document().toString(), source.value, '不连续变更应用到同一份导航文本')
+  assert.equal(fullSourceBuilds, 0, '带ChangeSet的批量编辑复用未变化片段')
+  sourceProgrammatic = true
+  source.value = '外部重载\n新正文'; source.dispatchEvent(new Event('input'))
+  sourceProgrammatic = false
+  assert.equal(cachedNav.document().toString(), source.value, '程序化替换后丢弃旧文本结构')
+  source.value = '切换文件\n另一个版本'; identity = {filePath: '/next-source.md', tabId: 'next'}
+  cachedNav.afterSwitch()
+  assert.equal(cachedNav.document().toString(), source.value, '切标签后导航读取新文本')
+} finally {
+  SourceText.of = originalTextOf
+  cachedNav.dispose()
+}
+console.log('通过：长文档源码选择零次全文构建，原生/批量输入增量更新，程序化替换与切标签正确失效')
+
+// 包裹式格式命令只需选区附近的字节，文档很长也不必序列化全文。
+for (const [id, marker] of [['bold', '**'], ['italic', '*'], ['inlineCode', '`'], ['strikethrough', '~~']]) {
+  let formatState = EditorState.create({doc: `${marker}正文${marker}\n${longSource}`, selection: {anchor: marker.length, head: marker.length + 2}})
+  const originalDocument = formatState.doc
+  originalDocument.toString = () => { throw new Error('局部格式命令不应读取全文') }
+  const view = {get state() { return formatState }, hasFocus: true, focus() {}, dispatch(spec) { formatState = formatState.update(spec).state }}
+  try { runFormatCommand(view, id) } finally { delete originalDocument.toString }
+  assert.equal(formatState.doc.sliceString(0, 2), '正文', `${id} 正确移除包裹标记`)
+  assert.equal(formatState.selection.main.from, 0)
+  assert.equal(formatState.selection.main.to, 2)
+}
+console.log('通过：加粗、斜体、行内代码和删除线命令只读局部文本')
+
+// 搜索动作必须先核对实际正文，不能把旧标签或旧版本的命中位置写进当前文件。
+const searchSource = new EventTarget()
+Object.assign(searchSource, {value: '', readOnly: false, selectionStart: 0, selectionEnd: 0,
+  focus() {}, setSelectionRange(from, to) { this.selectionStart = from; this.selectionEnd = to },
+  setRangeText(replacement, from, to) { this.value = this.value.slice(0, from) + replacement + this.value.slice(to) }})
+let searchSourceMode = false
+const searchPanel = Object.create(SearchPanel.prototype)
+Object.assign(searchPanel, {input: {value: 'target', focus() {}}, replaceInput: {value: 'Z'}, countEl: {textContent: ''},
+  matches: [], currentIndex: -1, beforeNavigate() {}, getSourceEditor: () => searchSourceMode ? searchSource : null})
+host.listener = null
+host.view.state = EditorState.create({doc: 'target first target'})
+searchPanel.search()
+assert.deepEqual(searchPanel.matches, [{from: 0, to: 6}, {from: 13, to: 19}])
+host.view.dispatch({changes: {from: 0, insert: 'new '}})
+searchPanel.next()
+assert.deepEqual(searchPanel.matches, [{from: 4, to: 10}, {from: 17, to: 23}], '编辑后下一项重算真实位置')
+host.view.state = EditorState.create({doc: 'different target document'})
+searchPanel.replaceCurrent()
+assert.equal(host.view.state.doc.toString(), 'different Z document', '切标签后替换只命中当前文件匹配')
+searchSourceMode = true; searchSource.value = 'source target text'
+searchPanel.search()
+searchSource.value = 'prefix source target text'
+searchPanel.replaceCurrent()
+assert.equal(searchSource.value, 'prefix source Z text', '源码值改变后替换不使用旧匹配位置')
+searchSource.value = 'other only'; searchPanel.next()
+assert.deepEqual(searchPanel.matches, [], '切换到无匹配的源码内容后旧命中失效')
+assert.equal(searchPanel.countEl.textContent, '0/0')
+searchSourceMode = false; host.view.state = EditorState.create({doc: 'same same'})
+searchPanel.input.value = 'same'; searchPanel.search()
+const originalLowercase = String.prototype.toLowerCase
+let documentLowercases = 0
+String.prototype.toLowerCase = function() {
+  if (String(this) === 'same same') documentLowercases++
+  return originalLowercase.call(this)
+}
+try {
+  searchPanel.input.value = 'sa'; searchPanel.search()
+  searchPanel.input.value = 'same'; searchPanel.search()
+  assert.equal(documentLowercases, 0, '同文档连续查询复用大小写转换结果')
+} finally { String.prototype.toLowerCase = originalLowercase }
+console.log('通过：查找复用当前文档分析，编辑/标签/模式变化后的导航与替换核对真实匹配')

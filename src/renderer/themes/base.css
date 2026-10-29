@@ -739,6 +739,29 @@ body.panel-resizing #editor-region { transition: none; }
   display: none;
 }
 
+/* 大目录只挂载视口附近的行，总高度仍代表完整目录。 */
+.file-list.file-list-virtual:not([hidden]) {
+  display: block;
+  position: relative;
+  flex-shrink: 0;
+  overflow-anchor: none;
+}
+
+.file-list.file-list-virtual > li {
+  position: absolute;
+  left: 0;
+  right: 0;
+}
+
+/* 测量行继承侧栏样式，不进入布局、焦点顺序或可访问树。 */
+.file-list.file-panel-measure {
+  position: absolute;
+  visibility: hidden;
+  pointer-events: none;
+  left: 8px;
+  right: 8px;
+}
+
 .outline-list button {
   line-height: 1.4;
 }

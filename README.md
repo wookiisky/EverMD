@@ -1,124 +1,52 @@
-# ColaMD
+# EverMD
 
-> A free, elegant Markdown editor anyone can pick up. No toolbars, no clutter, and the file on disk is always what you see.
+**Language / 语言: [English](README.md) · [中文](README_CN.md)**
 
-**Language / 语言: [English](README.md) · [中文](README_CN.md)** · [Website](https://colamd.com/)
+EverMD is an open-source Markdown editor based on [ColaMD](https://github.com/marswaveai/colamd), with changes to reading, navigation, and typography built on its existing editing capabilities.
 
-ColaMD is an open-source, free, elegant Markdown editor for writing, notes, and documentation. It is built for people who just want to write: no toolbars, no status bar, nothing to configure: just your text and a file list, with a tab strip only when you open a second document.
+## Introduction
 
-It offers true WYSIWYG editing, 12 built-in themes, rich-text copy, smart line breaks, search and replace, a document outline, PDF / HTML / Word export, and support for macOS, Windows, and Linux.
+I have tried so many good Markdown editors. But none of them satisfy all my requirements.
 
-Whatever writes the file (an AI agent such as Claude Code or Codex, a script, or another editor), ColaMD shows the new content right away. No reopening, no manual refresh.
+**Everyone should have his own Markdown editor.**
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![GitHub release](https://img.shields.io/github/release/marswaveai/colamd.svg)](https://github.com/marswaveai/colamd/releases)
+## Changes built on ColaMD
 
-[Download](#download) | [Features](#features)
+- **Independent left and right sidebars**: View files and the document outline together. Choose the content, visibility, and width of each sidebar independently, with settings remembered.
+- **Hide blank lines**: Use View → Hide Blank Lines to collapse blank lines in the document and blockquotes. This changes the view while preserving the Markdown source and saved content; the blank line being edited remains visible.
+- **Back and forward navigation**: Return to previous cursor locations and files through the View menu or keyboard shortcuts. Use `⌘⌥←` / `⌘⌥→` on macOS and `Alt+←` / `Alt+→` on Windows and Linux. Scrolling alone does not add history entries.
+- **Link navigation and appearance**: Click links to visit headings, HTML anchors, other Markdown files, or web pages, including cross-file anchors and Chinese headings. Links with valid destinations in tables are underlined.
+- **Emphasis around Chinese punctuation**: Improve recognition of asterisk-based bold, italic, and combined emphasis near Chinese punctuation while preserving the original Markdown characters.
+- **Tighter line spacing within paragraphs**: Reduce line spacing in body text, list continuations, blockquotes, and tables while preserving the gaps between paragraphs.
 
----
+See the [feature decisions](docs/feature-requests.md) for details and scope.
 
-## Screenshots
+## Performance improvements
 
-<p align="center">
-  <img src="docs/images/tasks-en.png" alt="ColaMD showing an interactive task list" width="49%">
-  <img src="docs/images/rendering-en.png" alt="ColaMD rendering a table and inline code" width="49%">
-</p>
+- **Long-document editing**: Reuse document analysis and parse blank-line visibility incrementally to reduce repeated work during typing and cursor movement.
+- **Large-directory browsing**: Render only entries near the visible area and reuse file-list and outline nodes. Each directory refreshes independently, so a slow directory does not hold up the others.
+- **Large-file processing**: Split word counts into cancellable chunks and reuse line-ending conversion results for saving, reducing uninterrupted computation and repeated conversions.
 
-<p align="center"><em>Interactive task lists, and Markdown rendered as you type: headings, links, tables and inline code.</em></p>
+Local macOS tests measured a 77%–80% reduction in input handling and synchronous layout time for a roughly 230,000-character document, and about 35 ms to display a directory of 10,000 files. These measurements exclude final screen presentation latency and are not fixed gains across platforms. Large-file first-open time has not shown a consistent improvement. See [performance measurements and limitations](docs/performance.md) for details.
 
-## Themes
+## Inherited capabilities
 
-Twelve built-in themes, six light, six dark, inspired by Bear, Notion, iA Writer, Kindle, Solarized, Nord, Gruvbox, and Dracula. Every one of them is also a standalone CSS file in [`themes/`](themes/), with a guide to [writing your own](themes/README.md) and a commented [template](themes/template.css) to copy.
+- Live Markdown rendering and source mode.
+- Automatic refresh when files change on disk, for use alongside other editors, scripts, or AI tools.
+- Tabs, multiple windows, search and replace, and a document outline.
+- Task lists, mathematical formulas, Mermaid diagrams, and rich-text copy.
+- PDF, HTML, Word, and image export.
+- Twelve built-in themes, custom CSS themes, and editor font settings.
+- Desktop support for macOS, Windows, and Linux.
 
-<p align="center">
-  <img src="docs/images/theme-swatches.svg" alt="ColaMD themes" width="92%">
-</p>
+Theme files are in [`themes/`](themes/), with a [theme authoring guide](themes/README.md) and a [template](themes/template.css).
 
-## Features
+## Upstream and acknowledgments
 
-- **Always in Sync**: Whenever the file changes on disk (an AI agent, a script, another editor), the editor updates immediately. No reopening, no manual refresh.
-- **True WYSIWYG Editing**: Type Markdown and see rich text directly. No split-pane preview.
-- **Files & Outline**: Browse Markdown files in the selected folder, or switch to a document outline for focused heading navigation.
-- **Source Mode**: Switch to the raw Markdown source whenever you need to inspect or edit it directly.
-- **Task Lists**: Click checkboxes to complete tasks, or use the keyboard shortcut.
-- **Highlights & LaTeX**: Write `==highlighted text==` and render mathematical formulas with KaTeX.
-- **Mermaid Diagrams**: Mermaid code blocks render as diagrams, and a diagram wider than the reading column can be zoomed (Ctrl/⌘ + scroll wheel, or the buttons in its corner) and dragged to pan. The renderer is loaded only when a document contains one, and clicking a diagram opens its source.
-- **Search & Replace**: Find anything in the current document with ⌘/Ctrl+F, then replace the current match or all matches.
-- **Smart Line Breaks**: Single newlines render as line breaks, matching how people and AI tools write Markdown.
-- **Rich Text Copy**: Copy content with formatting preserved into WeChat, email, and other rich-text editors.
-- **Themes**: Twelve built-in themes for focused writing in light or dark environments.
-- **Recent Files & Session Restore**: Jump back to the last 10 documents from the File menu, and reopen where you left off at launch.
-- **Editor Font Settings**: Pick any installed system font and size for the editor; your choice wins over theme defaults.
-- **Multiple Windows**: Independent editor windows, each with its own save queue and close protection.
-- **Save Status Hint**: A quiet titlebar indicator shows unsaved/saved, then fades away.
-- **Link Navigation**: Click links to jump to headings or HTML anchors (`<a id="…">`), open another Markdown file in a tab, or open a web page in your browser. Cross-file anchors and Chinese headings are supported; no modifier key is needed.
-- **Version Changelog**: The first launch after an update opens the built-in changelog once, so you can see what changed without repeated prompts.
-- **PDF, HTML & Word Export**: Turn your Markdown document into a themed PDF, self-contained HTML, or editable Word document.
-- **Image Export**: Share Markdown as one continuous PNG at the desktop or mobile reading width; longer documents continue as numbered pages.
-- **Portable Image Paths**: Local images use safe `file://` URLs for display and return to relative paths when saved.
-- **Minimal by Design**: No toolbar, no permanent sidebar, no distractions.
-- **Cross-Platform**: Available for macOS, Windows, and Linux.
+EverMD is based on [ColaMD](https://github.com/marswaveai/colamd). Thanks to [Cola.app](https://cola.app), [orange2ai](https://github.com/orange2ai), and the upstream contributors for the editor foundation.
 
-## Works with your Markdown workflow
-
-ColaMD does not ask you to change your habits. It works well alongside Obsidian, Typora, VS Code, and other Markdown apps, all sharing the same `.md` files, with each tool doing what it does best.
-
-## Download
-
-> Check [Releases](https://github.com/marswaveai/colamd/releases) for the latest builds.
-
-| Platform | Format |
-|----------|--------|
-| macOS    | `.dmg` |
-| Windows  | `.exe` |
-| Linux    | `.AppImage` / `.deb` |
-
-## Roadmap
-
-ColaMD will keep growing as a focused, free Markdown editor:
-
-- v1.1: Live file reload, file associations, drag & drop, themes
-- v1.2: New icon
-- v1.3: Agent activity indicator, Cmd+click links, rich text copy, smart line breaks, PDF export, theme persistence
-- v1.6: Robust live sync: atomic-save (rename) detection, watcher self-recovery, spellcheck off
-- v1.6.1: Editable task lists (click / ⌘+Enter), ==highlight== syntax, Markdown cheatsheet
-- v1.6.2: Temporarily remove HTML export
-- v1.7: Same-directory file list: switch files in place, live updates when agents create/remove files; search (⌘F) + LaTeX (⌘⇧E) from community PR #14
-- v1.7.1: Task checkbox click fix, centered SVG checkmark, titlebar file-panel toggle button
-- v1.7.2: Playable demo page: Help → 新功能演示 (⌘⇧D), a real directory showcasing each release's features
-- v1.7.3: Demo page becomes a cumulative changelog: resources/demo/changelog.md records every release and opens straight into it
-- v1.7.4: Community-feedback release: file panel improvements, source mode, HTML export, Windows image paths, and a VS Code integration MVP
-- v1.8.0: Portable image paths for Markdown and HTML images, plus editing fixes from community feedback
-- v1.8.1: Refined first-launch experience and macOS icon; removed Mermaid rendering so code blocks remain native and editable
-- v1.9.0: Word export, desktop and mobile reading-page image export, a document outline, themed PDF pages, and leaner startup loading
-- v2.0.0: 1000-star release: Mermaid diagrams return with luminance-aware colors, recent files & session restore, editor font settings, heading anchors, multiple windows, and a save status hint
-- v2.0.1: Universal macOS build for Apple silicon and Intel Macs, plus custom-theme restoration, Mermaid render recovery, and Windows updater fixes
-- v2.0.2: Resizable file panel (180–420px, remembered) and an outline progress view that highlights the current heading and flashes the landing point after a jump
-- v2.3.0: Folders expand in place in the file list, one root and downward, so nested documents are one click away. Plus a round of shell tightening: the tab strip starts on the panel's edge line, resizing the panel lights up the divider itself, long names in the list appear as a hover label instead of scrolling past the icon, and the title-bar controls express state through weight instead of boxes
-- v2.7.0: The editor core is rewritten around a single rule: the editor holds the file's bytes, and rendering is a layer drawn on top of them. Characters you never touched can no longer change on save (table delimiter rows and `*`, `$`, `_` used to come back rewritten), long documents export whole instead of one screenful, and images, links, footnotes, inline HTML, Mermaid diagrams, code highlighting, copy buttons and list continuation are all back on the new core
-- v2.6.0: Mermaid diagrams are drawn into exported Word documents (rendered light, because Word is a white page), the reading column has three widths in View → Text Width (640 / 780 / 1080, honoured by source mode and by the HTML and PDF exports), unsaved work is copied to `~/.colamd/recovered` before it is discarded, and the tab close button answers a 24×24 target while staying 16×16 on screen
-- v2.5.0: The document becomes a slideshow (View → Play Slideshow, ⌘⇧P): one `---` per page, full screen, starting at your caret, with the theme's typography, tables, formulas and diagrams on every slide. The same deck exports as a 16:9 PDF. Empty lines you type are written as blank lines instead of `<br />` tags, and a mixed `---`/`***` document keeps the rule marker it mostly uses
-- v2.4.4: YAML frontmatter survives a save byte for byte (opening a note and saving it used to rewrite the block into invalid YAML and overwrite the file), CRLF files stay CRLF, wide tables stop losing their last column in PDF exports, the find panel clears the window controls in the top row, a document opened from outside the app lands in the window you are looking at, and the file list can sit on either side from the View menu
-- v2.4.3: The Windows window buttons finally follow the theme. The colour handed to the system was a CSS Color 4 value it cannot parse, so the whole update was rejected and the buttons kept the colours from window creation (a light strip over a black row)
-- v2.4.2: Windows refinements to the one row: the system's window buttons are drawn in the row icons' grey instead of the document's ink, and the menu button moves to the row's left end with even spacing on both sides
-- v2.4.1: Full screen stops reserving room for traffic lights that are not there; Windows gets a shell of one row instead of three stacked bars, with the menu as the row's fourth icon; the shell's focus ring follows the theme instead of the system accent; the Window menu speaks the interface language; and a new tab is ready to type in
-- v2.4.0: The top row rebuilt. The left belongs to the document and the right is one column, with the file panel docked under the three controls that open it. Tabs fill the row as full-height columns and never collapse below twice the row height; every seam in the shell is one opaque hairline; the new-tab button keeps its place when the row fills up; and the panel shortcut is now `⌘\`
-- v2.2.0: One top row: the tab strip is always there and a single document is a tab too. Opened files land as tabs instead of new windows, the window remembers its size and zoom, PDF export gets page margins painted with the theme, plus a Format submenu, footnote hover previews, and colours that follow the theme everywhere
-- v2.1.2: A quieter tab strip: the first tab sits flush with the window edge, and the theme colour line on the active tab is gone. The editor is a canvas, the shell stays out of the way
-- v2.1.1: Tabs get their plus back, at the end of the tab strip; a right-click menu on tabs (close, close others, close to the right, copy path, reveal); and a quieter hover hint that waits a second and shows only the shortcut
-- v2.1.0: Tabs: keep several documents open in one window, each with its own content, undo history, unsaved state and scroll position. Open one with ⌘T, from the File menu, or with ⌘-click in the file list; with a single document the tab strip does not appear at all
-- v2.0.7: Per-architecture macOS downloads (216 MB down to about 82 MB), a Windows zip build that runs without installing, a context menu in the file panel, and a document title that stays centred
-- v2.0.6: Titlebar fixes: reveal-in-file-manager works again, tooltips paint above the document instead of showing through, and the top-right controls align with the top edge
-- v2.0.5: The reveal-in-file-manager button is now reachable, hovering the document title brings it out
-- v2.0.4: PDF export no longer captures app overlays, undo can no longer cross documents, rich-text copy no longer adds blank lines in chat apps, source mode no longer overflows with the file panel open, a reveal-in-file-manager action next to the document title, and the heuristic agent activity dot removed
-- v2.0.3: Find & replace, UI language switch, large-document source-mode fallback, update download progress with retry, and differential (blockmap) updates
-- Future: More themes, editor integrations, and smoother Markdown workflows
+The [ColaMD website](https://colamd.com/) and [upstream releases](https://github.com/marswaveai/colamd/releases) describe and distribute the original project. This repository contains the EverMD changes.
 
 ## License
 
-[MIT](LICENSE), Free forever.
-
-
----
-
-ColaMD is built by [Cola.app](https://cola.app) and maintained by [orange2ai](https://github.com/orange2ai). Issues, ideas and pull requests are welcome.
+Licensed under [MIT](LICENSE), with the upstream copyright notice retained.

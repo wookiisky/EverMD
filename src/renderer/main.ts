@@ -11,6 +11,12 @@ import { SearchPanel } from './editor/search-panel'
 import { applyTheme, loadSavedTheme } from './themes/theme-manager'
 import { setUiLanguage, isChinese, type UiLanguage } from './ui-language'
 import { Sidebars } from './sidebars'
+import { DocumentOutline, sameOutlineLabels, type OutlineItem } from './document-outline'
+import { FilePanelModel } from './file-panel-model'
+import { FilePanelView } from './file-panel-view'
+import { DocumentFileContent } from './document-file-content'
+import { DocumentStatisticsScheduler } from './document-statistics-scheduler'
+import statisticsLabels from '../shared/document-statistics-labels.json'
 import { EditorNavigation } from './editor-navigation'
 import { prepareDocumentsForClose } from './document-close'
 import type { NavigationAnchor } from './navigation-history'
@@ -28,7 +34,10 @@ const editorScroller = () => getEditorScroller() ?? editorEl()
 const sourceEl = () => document.getElementById('source-editor') as HTMLTextAreaElement
 const fileListEls = () => Array.from(document.querySelectorAll<HTMLElement>('.file-list'))
 const outlineListEls = () => Array.from(document.querySelectorAll<HTMLElement>('.sidebar[data-content="outline"][aria-hidden="false"] .outline-list'))
-const sidebars = new Sidebars(side => renderOutline(side))
+const sidebars = new Sidebars(side => {
+  renderOutline(side)
+  scheduleFileListRender()
+})
 const sourceToggleBtnEl = () => document.getElementById('source-toggle-btn') as HTMLButtonElement
 const wordCountEl = () => document.getElementById('word-count') as HTMLElement
 const saveStatusEl = () => document.getElementById('save-status') as HTMLElement
@@ -61,10 +70,11 @@ let editorReady = false
 let outlineUpdateQueued = false
 // Outline doubles as a reading-progress view (#64): the entry for the section
 // currently at the top of the viewport is highlighted and kept visible.
-// outlineItems only caches source-mode line numbers; visual mode re-queries
-// the live DOM at use time because Milkdown recreates heading nodes whenever
-// the content is re-set, which silently detaches cached element references.
-let outlineItems: OutlineItem[] = []
+// 标题位置与按钮显示分开：正文换行只更新位置，不销毁现有按钮。
+const documentOutline = new DocumentOutline()
+const outlineLabelsByList = new WeakMap<HTMLElement, readonly OutlineItem[]>()
+let outlineItems: readonly OutlineItem[] = []
+let outlineRevealQueued = false
 let outlineActiveIndex = -1
 let outlineSyncQueued = false
 // While an outline click drives a smooth scroll, scrollspy updates are paused
@@ -120,8 +130,7 @@ function setMarkdownProgrammatically(content: string, flushHistory = false): voi
   if (isPresenting()) stopSlideshow()
   applyingProgrammaticChange = true
   try {
-    setMarkdown(content, flushHistory)
-    setEditorHideBlankLines(hideBlankLines)
+    setMarkdown(content, flushHistory, { fileUrl: currentFileUrl, hideBlankLines })
   } finally {
     applyingProgrammaticChange = false
   }
@@ -546,11 +555,11 @@ function showBlankDocument(): void {
   activeLineEnding = '\n'
   applyingProgrammaticChange = true
   try {
-    setMarkdown('', true)
+    setMarkdown('', true, { fileUrl: currentFileUrl, hideBlankLines })
   } finally {
     applyingProgrammaticChange = false
   }
-  updateWordCount('')
+  updateWordCount()
   resetDirty()
   updateFileTitle()
   updatePanelVisibility()
@@ -617,7 +626,7 @@ async function openNewTabNow(): Promise<void> {
   tabs.push(tab)
   activeTabId = tab.id
   currentFilePath = null
-  applyDocumentFileUrl(null)
+  currentFileUrl = null
   // Tell the main process the window is now on an untitled document, otherwise
   // its notion of the active file still points at the previous tab's file.
   await window.electronAPI.activateFile(null)
@@ -665,7 +674,7 @@ async function activateTabNow(id: string, savePrevious = true): Promise<'ok' | '
     if (result?.status === 'error') return 'cancelled'
     if (!target.filePath) await window.electronAPI.activateFile(null)
     const disk = result?.status === 'ok' ? result : null
-    applyDocumentFileUrl(result?.status === 'ok' || result?.status === 'cached' ? result.fileUrl : null)
+    currentFileUrl = result?.status === 'ok' || result?.status === 'cached' ? result.fileUrl : null
     // This document may have been written in a different style than the one we
     // are leaving; its content comes back with it, and the style lives in the
     // content itself, so there is nothing to restore separately.
@@ -692,13 +701,11 @@ async function activateTabNow(id: string, savePrevious = true): Promise<'ok' | '
       // rewrites the file the user never touched.
       applyingProgrammaticChange = true
       try {
-        restoreEditorState(target.editorState)
+        restoreEditorState(target.editorState, { fileUrl: currentFileUrl, hideBlankLines })
       } finally {
         applyingProgrammaticChange = false
       }
     }
-    // 标签快照可能来自切换开关之前，恢复后始终采用当前应用偏好。
-    setEditorHideBlankLines(hideBlankLines)
     // The tab's own unsaved state decides, never the swap itself.
     dirty = target.dirty
     reportDirty()
@@ -820,7 +827,7 @@ function applyOpenedFile(data: { path: string | null; content: string; fileUrl: 
   const previous = activeTab()!
   if (!previous.filePath && data.path) navigation?.closed(previous.id, null)
   currentFilePath = data.path
-  applyDocumentFileUrl(data.fileUrl)
+  currentFileUrl = data.fileUrl
   dirty = false
   previous.filePath = data.path
   previous.dirty = false
@@ -1056,19 +1063,9 @@ function applyContent(content: string): void {
 }
 
 // --- Document statistics (top-right hover indicator) ---
-function countCharacters(content: string): number {
-  return content.replace(/\s/g, '').length
-}
-
-function countTokens(content: string): number {
-  const tokens = content.match(/[\u3400-\u4DBF\u4E00-\u9FFF\uF900-\uFAFF\u3040-\u30FF\uAC00-\uD7AF]|[A-Za-z]+(?:['’\\-][A-Za-z]+)*|\d+(?:[.,]\d+)*/g)
-  return tokens?.length ?? 0
-}
-
-function countParagraphs(content: string): number {
-  const normalized = content.replace(/\r\n?/g, '\n').trim()
-  return normalized ? normalized.split(/\n\s*\n+/).filter((block) => block.trim()).length : 0
-}
+// 展示请求按帧合并，大文档统计分段让出主线程；保存状态仍同步更新。
+let statisticsQueued = false
+const documentStatistics = new DocumentStatisticsScheduler()
 
 function setToolbarTip(el: HTMLElement, label: string): void {
   el.setAttribute('aria-label', label)
@@ -1076,11 +1073,23 @@ function setToolbarTip(el: HTMLElement, label: string): void {
   if (tip) tip.textContent = label
 }
 
-function updateWordCount(content?: string): void {
-  const text = content ?? getContent()
-  setToolbarTip(wordCountEl(), isChinese()
-    ? `${countCharacters(text)} 字 · ${countTokens(text)} 词 · ${countParagraphs(text)} 段`
-    : `${countCharacters(text)} chars · ${countTokens(text)} words · ${countParagraphs(text)} paragraphs`)
+function updateWordCount(): void {
+  if (statisticsQueued) return
+  statisticsQueued = true
+  requestAnimationFrame(() => {
+    statisticsQueued = false
+    // 回调读取当前文档，连续切标签不会把前一篇的统计写到新标签上。
+    const text = getContent()
+    documentStatistics.request(text, statistics => {
+      // 新正文的帧回调尚未执行时，旧任务也不能发布到已经切换的文档。
+      if (text !== getContent()) return
+      const label = statisticsLabels[isChinese() ? 'zh' : 'en'].statistics
+        .replace('{characters}', String(statistics.characters))
+        .replace('{tokens}', String(statistics.tokens))
+        .replace('{paragraphs}', String(statistics.paragraphs))
+      setToolbarTip(wordCountEl(), label)
+    })
+  })
 }
 
 // --- Reveal the current file in the OS file manager ---
@@ -1122,6 +1131,7 @@ function updateUiLanguage(): void {
   if (menuBtn) setToolbarTip(menuBtn, zh ? '菜单' : 'Menu')
   updateSourceToggle()
   updateWordCount()
+  scheduleFileListRender()
 }
 function scrollRatio(el: HTMLElement): number {
   const range = el.scrollHeight - el.clientHeight
@@ -1204,127 +1214,85 @@ function updatePanelVisibility(): void {
   sidebars.refresh()
 }
 
-interface OutlineItem {
-  level: number
-  title: string
-  line?: number
-}
-
-function sourceOutline(content: string): OutlineItem[] {
-  const items: OutlineItem[] = []
-  // 代码围栏里的 `#` 是注释，不是标题（#137：Python、shell、YAML 的注释都进过大纲）。
-  // 记一下当前在不在围栏里，以及是哪种围栏、多长：```` 开头的块里出现 ``` 不算闭合。
-  let fence: { char: string; length: number } | null = null
-  content.split(/\r?\n/).forEach((line, index) => {
-    const fenceMatch = /^\s{0,3}(`{3,}|~{3,})/.exec(line)
-    if (fenceMatch) {
-      const marker = fenceMatch[1]
-      if (!fence) {
-        fence = { char: marker[0], length: marker.length }
-      } else if (marker[0] === fence.char && marker.length >= fence.length) {
-        fence = null
-      }
-      return
-    }
-    if (fence) return
-    const match = /^(#{1,6})\s+(.+?)(?:\s+#+)?\s*$/.exec(line)
-    if (!match) return
-    const title = match[2].replace(/!?(?:\[([^\]]*)\])\([^)]*\)/g, '$1').replace(/[*_`]/g, '').trim()
-    if (title) items.push({ level: match[1].length, title, line: index })
-  })
-  return items
-}
-
-// 大纲从源码文本里读，不从渲染后的 DOM 里找。
-//
-// 旧实现是查 `#editor .ProseMirror h1…h6`，因为 ProseMirror 会把标题渲成真的 <h1> 标签。
-// CodeMirror 不这样做：标题只是带上装饰的一行文本。从文本解析本来就更该是对的做法，
-// 它跟「怎么画」无关，读源码模式与视觉模式能用同一份逻辑。
-function visualOutline(): OutlineItem[] {
-  return sourceOutline(getMarkdown())
-}
-
 function outlineVisible(): boolean {
   return sidebars.hasVisibleContent('outline')
 }
 
 function renderOutline(side?: SidebarSide): void {
-  // The outline is only ever read from the panel, which is hidden by default.
-  // Rebuilding it on every keystroke (and on every scroll) burned a full DOM
-  // teardown plus forced layout per frame for output nobody could see.
   if (!outlineVisible()) return
-  outlineItems = sourceModeActive ? sourceOutline(sourceEl().value) : visualOutline()
+  outlineItems = documentOutline.read(getContent())
   const lists = outlineListEls().filter(list => !side || list.closest<HTMLElement>('.sidebar')?.id === `${side}-sidebar`)
-  for (const list of lists) list.innerHTML = ''
-  if (outlineItems.length === 0) {
-    outlineActiveIndex = -1
-    return
-  }
   for (const list of lists) {
+    const previous = outlineLabelsByList.get(list)
+    if (sameOutlineLabels(previous, outlineItems)) continue
     outlineItems.forEach((item, index) => {
-      const entry = document.createElement('li')
-      const button = document.createElement('button')
-      button.dataset.headingIndex = String(index)
-      button.type = 'button'
-      button.textContent = item.title
-      // Hover keeps truncated headings readable while the panel width stays
-      // as-is in this change (#64).
+      let entry = list.children[index] as HTMLLIElement | undefined
+      if (!entry) {
+        entry = document.createElement('li')
+        const button = document.createElement('button')
+        button.dataset.headingIndex = String(index)
+        button.type = 'button'
+        button.addEventListener('click', () => selectOutlineItem(index))
+        entry.append(button)
+        list.append(entry)
+      }
+      const button = entry.firstElementChild as HTMLButtonElement
+      if (button.textContent !== item.title) button.textContent = item.title
       button.title = item.title
       button.style.paddingLeft = `${8 + (item.level - 1) * 12}px`
-      button.addEventListener('click', () => {
-        // Re-resolve the entry against the live text: cached references die when
-        // the editor content is re-set (#64).
-        const current = (sourceModeActive ? sourceOutline(sourceEl().value) : visualOutline())[index]
-        if (!current) return
-        if (sourceModeActive) {
-          navigation?.beforeSwitch()
-          beginOutlineJump()
-          const source = sourceEl()
-          const lineHeight = Number.parseFloat(getComputedStyle(source).lineHeight) || 24
-          source.scrollTop = Math.max(0, (current.line ?? 0) * lineHeight - lineHeight)
-          source.focus()
-          revealSourceHeading(source, current.line ?? 0)
-        } else if (current.line !== undefined) {
-          // 视觉模式：交给编辑器自己跳，它会同时把光标放过去。
-          // flashHeadingOnArrival 的信号靠编辑器内部的落点装饰发出，这里只管跳。
-          beginOutlineJump()
-          jumpToLine(current.line)
-        }
-        setActiveOutlineIndex(index)
-      })
-      entry.appendChild(button)
-      list.appendChild(entry)
     })
+    while (list.children.length > outlineItems.length) list.lastElementChild!.remove()
+    outlineLabelsByList.set(list, outlineItems)
   }
+  if (outlineItems.length === 0) outlineActiveIndex = -1
   applyOutlineActive()
   scheduleOutlineActiveSync()
+}
+
+// 点击读取最新行号，正文换行而标题未变时也能跳到正确位置。
+function selectOutlineItem(index: number): void {
+  const current = documentOutline.read(getContent())[index]
+  if (!current) return
+  if (sourceModeActive) {
+    navigation?.beforeSwitch()
+    beginOutlineJump()
+    const source = sourceEl()
+    const lineHeight = Number.parseFloat(getComputedStyle(source).lineHeight) || 24
+    source.scrollTop = Math.max(0, current.line * lineHeight - lineHeight)
+    source.focus()
+    revealSourceHeading(source, current.line)
+  } else {
+    beginOutlineJump()
+    jumpToLine(current.line)
+  }
+  setActiveOutlineIndex(index)
 }
 
 function applyOutlineActive(): void {
   for (const list of outlineListEls()) {
     const buttons = list.querySelectorAll<HTMLButtonElement>('button')
-    buttons.forEach((button, index) => {
-      button.classList.toggle('active', index === outlineActiveIndex)
+    buttons.forEach((button, index) => button.classList.toggle('active', index === outlineActiveIndex))
+  }
+  if (outlineRevealQueued) return
+  outlineRevealQueued = true
+  requestAnimationFrame(() => {
+    outlineRevealQueued = false
+    // 先批量读取两侧几何，再写滚动位置，避免写入后立即触发布局读取。
+    const updates = outlineListEls().flatMap(list => {
+      const button = list.querySelectorAll<HTMLButtonElement>('button')[outlineActiveIndex]
+      if (!button) return []
+      const panel = button.closest<HTMLElement>('.sidebar')!
+      const panelTop = panel.getBoundingClientRect().top
+      const top = button.getBoundingClientRect().top - panelTop + panel.scrollTop
+      const bottom = top + button.offsetHeight
+      const scrollTop = top < panel.scrollTop ? top
+        : bottom > panel.scrollTop + panel.clientHeight ? bottom - panel.clientHeight : panel.scrollTop
+      return [{ panel, scrollTop }]
     })
-    // Keep the tracked section visible in long documents.
-    const active = buttons[outlineActiveIndex]
-    if (active) revealOutlineEntry(active)
-  }
-}
-
-// Manual reveal of the active entry inside the panel. scrollIntoView() must
-// not be used here: it would also interrupt the smooth scroll of the content
-// pane started by an outline click, so only the panel's own scroller moves.
-function revealOutlineEntry(button: HTMLButtonElement): void {
-  const panel = button.closest<HTMLElement>('.sidebar')!
-  const panelTop = panel.getBoundingClientRect().top
-  const top = button.getBoundingClientRect().top - panelTop + panel.scrollTop
-  const bottom = top + button.offsetHeight
-  if (top < panel.scrollTop) {
-    panel.scrollTop = top
-  } else if (bottom > panel.scrollTop + panel.clientHeight) {
-    panel.scrollTop = bottom - panel.clientHeight
-  }
+    for (const { panel, scrollTop } of updates) {
+      if (panel.scrollTop !== scrollTop) panel.scrollTop = scrollTop
+    }
+  })
 }
 
 function beginOutlineJump(): void {
@@ -1450,139 +1418,58 @@ function updateFileTitle(): void {
   document.title = name
 }
 
-// --- File panel: one root, expanded downward ---
-// The root is the open document's directory and `..` stays the one way back
-// up; a directory is read only when it is expanded, so a deep tree costs
-// nothing until the reader asks for it. Expansion lives in memory only — no
-// workspace, nothing restored on the next launch.
-const PANEL_INDENT = 12
-let panelRoot: import('../preload/index').SiblingFile[] = []
-const panelChildren = new Map<string, import('../preload/index').SiblingFile[]>()
-const panelExpanded = new Set<string>()
-const panelLoading = new Set<string>()
+// 文件列表数据、节点和刷新轮次分别管理，连续事件只绘制最新结果。
+const filePanel = new FilePanelModel(path => window.electronAPI.listDirectory(path), scheduleFileListRender)
+const filePanelView = new FilePanelView(
+  (button, label, side) => scheduleTip(button, label, side, ROW_TIP_DELAY),
+  hideTip,
+)
 
-type PanelRow = {
-  file: import('../preload/index').SiblingFile
-  depth: number
-  expandable: boolean
-  expanded: boolean
-  empty: boolean
+// 自定义主题也可能改变列表间距，主题应用后重新测量虚拟行的几何。
+function applyWindowTheme(name: string, customCSS?: string): void {
+  applyTheme(name, customCSS)
+  filePanelView.refreshGeometry()
 }
 
-// Flatten the expanded tree into visible rows. Rendering stays a flat list, so
-// hover, active state and hit-testing keep working the way they always have.
-function panelRows(): PanelRow[] {
-  const rows: PanelRow[] = []
-  const walk = (entries: import('../preload/index').SiblingFile[], depth: number): void => {
-    for (const file of entries) {
-      const expanded = file.kind === 'directory' && panelExpanded.has(file.path)
-      rows.push({ file, depth, expandable: file.kind === 'directory', expanded, empty: false })
-      if (!expanded) continue
-      const children = panelChildren.get(file.path)
-      if (!children) {
-        void loadPanelDirectory(file.path)
-        continue
-      }
-      if (children.length === 0) rows.push({ file, depth: depth + 1, expandable: false, expanded: false, empty: true })
-      else walk(children, depth + 1)
-    }
-  }
-  walk(panelRoot, 0)
-  return rows
-}
+let fileListRenderQueued = false
+let siblingsRequestVersion = 0
+let siblingsRefreshRequested = false
+let siblingsRefresh: Promise<void> | null = null
 
-function loadPanelDirectory(dir: string): void {
-  if (panelLoading.has(dir)) return
-  panelLoading.add(dir)
-  void window.electronAPI.listDirectory(dir).then((children) => {
-    panelLoading.delete(dir)
-    if (!children) return
-    panelChildren.set(dir, children)
-    renderFileList(panelRoot)
+// 只绘制可见文件面板，重新显示时复用当前数据补齐。
+function scheduleFileListRender(): void {
+  if (fileListRenderQueued) return
+  fileListRenderQueued = true
+  requestAnimationFrame(() => {
+    fileListRenderQueued = false
+    const lists = Array.from(document.querySelectorAll<HTMLElement>('.sidebar[data-content="files"][aria-hidden="false"] .file-list'))
+    if (lists.length === 0) return
+    hideTip()
+    filePanelView.render(lists, filePanel.rows(), currentFilePath, isChinese() ? 'zh' : 'en')
   })
 }
 
-function togglePanelDirectory(dir: string): void {
-  if (panelExpanded.has(dir)) panelExpanded.delete(dir)
-  else {
-    panelExpanded.add(dir)
-    loadPanelDirectory(dir)
-  }
-  renderFileList(panelRoot)
-}
-
-function renderFileList(files: import('../preload/index').SiblingFile[]): void {
-  panelRoot = files
-  hideTip()
-  const rows = panelRows()
-  for (const list of fileListEls()) {
-    list.innerHTML = ''
-    for (const row of rows) {
-      const li = document.createElement('li')
-      const indent = 8 + row.depth * PANEL_INDENT
-      if (row.empty) {
-        const empty = document.createElement('div')
-        empty.className = 'file-empty'
-        empty.style.paddingLeft = `${indent}px`
-        empty.textContent = isChinese() ? '这个文件夹是空的' : 'This folder is empty'
-        li.appendChild(empty)
-        list.appendChild(li)
-        continue
+// 读取期间的新请求合并为下一轮，旧结果不能覆盖新的文件切换或目录事件。
+function refreshSiblings(): Promise<void> {
+  siblingsRequestVersion++
+  siblingsRefreshRequested = true
+  if (siblingsRefresh) return siblingsRefresh
+  siblingsRefresh = (async () => {
+    while (siblingsRefreshRequested) {
+      siblingsRefreshRequested = false
+      const version = siblingsRequestVersion
+      try {
+        const files = await window.electronAPI.listSiblings()
+        if (files && version === siblingsRequestVersion) void filePanel.replaceRoot(files)
+      } catch (error) {
+        console.error('文件列表读取失败', error)
       }
-      const f = row.file
-      const btn = document.createElement('button')
-      btn.style.paddingLeft = `${indent}px`
-      const chevron = document.createElement('span')
-      chevron.className = `file-entry-chevron${row.expanded ? ' expanded' : ''}${f.kind === 'parent' ? ' back' : ''}`
-      chevron.setAttribute('aria-hidden', 'true')
-      // Same 10-unit box and stroke as the expander chevrons: drawing the way back
-      // in a 16-unit box scaled into the same 10px slot made it smaller and its
-      // stroke lighter, so the two arrows read as different controls (2026-09-15).
-      if (f.kind === 'parent') chevron.innerHTML = '<svg viewBox="0 0 10 10"><path d="M8.5 5H2M4.5 2.5 2 5l2.5 2.5"/></svg>'
-      else if (row.expandable) chevron.innerHTML = '<svg viewBox="0 0 10 10"><path d="M3.5 1.5 7 5l-3.5 3.5"/></svg>'
-      const icon = document.createElement('span')
-      icon.className = `file-entry-icon ${f.kind}`
-      icon.setAttribute('aria-hidden', 'true')
-      icon.innerHTML = f.kind === 'directory'
-        ? '<svg viewBox="0 0 16 16"><path d="M2.5 4.5h4l1.5 1.5h6v6.5h-11.5z"/><path d="M2.5 4.5v-1h4l1.5 1.5"/></svg>'
-        : '<svg viewBox="0 0 16 16"><path d="M4 2.5h5l3 3v8H4z"/><path d="M9 2.5v3h3"/></svg>'
-      const label = document.createElement('span')
-      label.className = 'file-entry-name'
-      // Words, not two dots: the row has the space and ".." never said where it goes.
-      label.textContent = f.kind === 'parent' ? (isChinese() ? '返回' : 'Back') : f.name
-      btn.addEventListener('mouseenter', () => {
-        // Only a name that is actually cut off is worth a label; one that fits
-        // says itself. No marquee: sliding the name under the icon to read it
-        // covers the row it belongs to.
-        if (label.scrollWidth <= label.clientWidth + 1) return
-        const side = list.closest<HTMLElement>('.sidebar')?.id === 'right-sidebar' ? 'left' : 'right'
-        scheduleTip(btn, label.textContent ?? '', side, ROW_TIP_DELAY)
-      })
-      btn.addEventListener('mouseleave', hideTip)
-      btn.title = f.kind === 'directory'
-        ? (isChinese()
-            ? `${row.expanded ? '收起' : '展开'} ${f.name}`
-            : `${row.expanded ? 'Collapse' : 'Expand'} ${f.name}`)
-        : f.kind === 'parent' ? (isChinese() ? '返回上级目录' : 'Go to parent directory') : f.name
-      btn.dataset.path = f.path
-      btn.dataset.kind = f.kind
-      btn.classList.toggle('directory', f.kind === 'directory')
-      btn.classList.toggle('parent', f.kind === 'parent')
-      if (f.path === currentFilePath) btn.classList.add('active')
-      // The way back sits in the expander's column and its name takes the icon's,
-      // so the row reads left to right like every other one instead of hanging a
-      // column in. It has no icon of its own, which is why no slot is skipped.
-      if (f.kind === 'parent') btn.append(chevron, label)
-      else btn.append(chevron, icon, label)
-      li.appendChild(btn)
-      list.appendChild(li)
     }
-  }
-}
-
-async function refreshSiblings(): Promise<void> {
-  const files = await window.electronAPI.listSiblings()
-  if (files) renderFileList(files)
+  })().finally(() => {
+    siblingsRefresh = null
+    if (siblingsRefreshRequested) void refreshSiblings()
+  })
+  return siblingsRefresh
 }
 
 function enterSourceMode(content: string, ratio = 0): void {
@@ -1621,12 +1508,12 @@ function setContent(content: string, flushHistory = false): void {
     // 重算一遍全篇，打字会卡。所以超大文件仍然进源码模式——渲染不参与，编辑就快。
     // （旧核心的理由是「ProseMirror 会把整篇渲染出来」，那条早就不成立了。）
     enterSourceMode(body)
-    updateWordCount(body)
+    updateWordCount()
     return
   }
   exitSourceMode()
   setMarkdownProgrammatically(body, flushHistory)
-  updateWordCount(body)
+  updateWordCount()
 }
 
 function getContent(): string {
@@ -1636,9 +1523,10 @@ function getContent(): string {
 
 // What belongs in the file: the properties block untouched, then the document
 // in the line endings the file already used.
+const documentFileContent = new DocumentFileContent()
+
 function getFileContent(): string {
-  const body = getContent()
-  return activeFrontmatter + (activeLineEnding === '\r\n' ? body.replace(/\r?\n/g, '\r\n') : body)
+  return documentFileContent.read(getContent(), activeLineEnding, activeFrontmatter)
 }
 
 /**
@@ -1849,17 +1737,17 @@ async function init(): Promise<void> {
     document.body.classList.add('platform-win')
     document.getElementById('app-menu-btn')?.removeAttribute('hidden')
   }
-  const language = await api.getLanguage()
-  fileManagerName = await api.getFileManagerName()
+  const [language, manager] = await Promise.all([api.getLanguage(), api.getFileManagerName()])
+  fileManagerName = manager
   setUiLanguage(language)
   const savedTheme = loadSavedTheme()
   if (savedTheme.startsWith('custom:')) {
     // Load before applying: a newly opened window must not briefly paint the
     // custom class without its stylesheet. Missing files self-heal to elegant.
     const css = await api.loadThemeCSS(savedTheme.slice(7))
-    applyTheme(css ? savedTheme : 'elegant', css ?? undefined)
+    applyWindowTheme(css ? savedTheme : 'elegant', css ?? undefined)
   } else {
-    applyTheme(savedTheme)
+    applyWindowTheme(savedTheme)
   }
   applyEditorFont(loadSavedEditorFont())
 
@@ -1900,8 +1788,8 @@ async function init(): Promise<void> {
   api.onFormatCommand((id) => runFormatCommand(id as FormatCommandId))
   updateUiLanguage()
 
-  await createEditor('editor', (markdown) => {
-    updateWordCount(markdown)
+  await createEditor('editor', () => {
+    updateWordCount()
   }, () => {
     if (!editorReady) return
     if (!applyingProgrammaticChange) setDirty()
@@ -1962,12 +1850,6 @@ async function init(): Promise<void> {
       }
     }, false)
   })
-  // Report readiness only after every listener is registered — the main process
-  // reacts to this signal by flushing queued tab-opens and by trusting the
-  // window with close/quit flows. It sat mid-init once and the flush raced
-  // bindTabBar: files handed over at launch were dropped silently.
-  api.reportRendererReady()
-
   // Save before switching files. If saving is cancelled or fails, preserve the
   // current document rather than opening another file over it.
   for (const list of fileListEls()) {
@@ -1976,7 +1858,7 @@ async function init(): Promise<void> {
       if (!btn || !btn.dataset.path) return
       // A directory expands in place; the tree only ever grows downward.
       if (btn.dataset.kind === 'directory') {
-        togglePanelDirectory(btn.dataset.path)
+        filePanel.toggle(btn.dataset.path)
         return
       }
       if (btn.dataset.path === currentFilePath) return
@@ -2050,13 +1932,11 @@ async function init(): Promise<void> {
   onEditorJumpPhase((phase) => (phase === 'start' ? beginOutlineJump() : endOutlineJump()))
 
   api.onSiblingsChanged((files) => {
-    // A watcher refresh can change any directory that is open, so drop the
-    // cached levels and let the expanded ones read themselves again.
-    panelChildren.clear()
-    renderFileList(files)
+    // 根条目相同也可能有子目录变化，刷新已展开目录并保留未变节点。
+    siblingsRequestVersion++
+    void filePanel.replaceRoot(files)
   })
   updatePanelVisibility()
-  await refreshSiblings()
 
   api.onMenuOpen(async () => {
     // 'file-opened' event drives the content load (and file-panel refresh)
@@ -2119,7 +1999,7 @@ async function init(): Promise<void> {
     scheduleOutlineUpdate()
   }
 
-  api.onSetTheme((theme) => applyTheme(theme))
+  api.onSetTheme((theme) => applyWindowTheme(theme))
 
   api.onSetPageWidth((width) => applyPageWidth(width))
 
@@ -2160,12 +2040,12 @@ async function init(): Promise<void> {
   api.onEditorFontChanged((prefs) => applyEditorFont(prefs.family || prefs.size ? prefs : null))
   api.onSetCustomCSS((css) => {
     const theme = loadSavedTheme()
-    applyTheme(theme, css)
+    applyWindowTheme(theme, css)
   })
 
   api.onMenuImportTheme(async () => {
     const result = await api.loadCustomTheme()
-    if (result) applyTheme(`custom:${result.name}`, result.css)
+    if (result) applyWindowTheme(`custom:${result.name}`, result.css)
   })
 
   // --- Auto update banner (weak, non-blocking) ---
@@ -2238,6 +2118,9 @@ async function init(): Promise<void> {
     // 'file-opened' event drives the content load when opened into this window
     void result
   })
+  // 必要监听、标签和导航都已安装；目录读取不阻塞正文交付。
+  api.reportRendererReady()
+  void refreshSiblings()
 }
 
 // Errors after init leave no trace in a packaged app either. Same log, and the

@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 // 左右侧栏的真实 Electron 验收；先构建，窗口始终离屏且不抢焦点。
+// --screenshots 额外保存主题截图；部分 macOS 隐藏窗口不能完成截图，功能断言不依赖它。
 import assert from 'node:assert/strict'
 import { spawn } from 'node:child_process'
-import { readFileSync, statSync, writeFileSync } from 'node:fs'
+import { mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -118,6 +119,7 @@ async function clickMenu(id) {
 async function setVisible(side, visible) {
   if (await evaluate(renderer, `${prefs}.${side}.visible`) !== visible) await clickMenu(`sidebar-${side}-visible`)
   await waitFor(`${prefs}.${side}.visible === ${visible}`, `${side} 侧栏显隐未更新`)
+  await waitFor(`document.getElementById('${side}-sidebar').hidden === ${!visible}`, `${side} 侧栏显隐动画未完成`)
   await pause(240)
 }
 
@@ -283,7 +285,8 @@ try {
       return caret && caret.top >= viewport.top - 1 && caret.bottom <= viewport.bottom + 1
     })()`, '大纲目标未进入正文视口')
     check(`点击${side === 'left' ? '左' : '右'}大纲后光标与视口均落在目标标题`, true)
-    check('两侧大纲同步高亮且各自在自己的滚动区显示目标', await evaluate(renderer, `(() => {
+    // 大纲的几何读取与滚动写入在下一帧合并，等待真实可见结果。
+    await waitFor(`(() => {
       return ['left','right'].every(side => {
         const panel = document.getElementById(side + '-sidebar')
         const active = panel.querySelector('.outline-list button.active')
@@ -291,7 +294,8 @@ try {
         const item = active.getBoundingClientRect(), viewport = panel.getBoundingClientRect()
         return item.top >= viewport.top - 1 && item.bottom <= viewport.bottom + 1
       })
-    })()`))
+    })()`, '两侧大纲未同步高亮或未滚动到目标')
+    check('两侧大纲同步高亮且各自在自己的滚动区显示目标', true)
   }
   // 等跳转锁自然释放，再手动滚动正文，验证监听接在真正的 .cm-scroller 上。
   await pause(1900)
@@ -330,9 +334,8 @@ try {
     `document.getElementById('left-sidebar').getBoundingClientRect().width >= ${narrowLeftWidth} && ${prefs}.right.width === 260`))
   await drag('left', 280)
   await evaluate(main, "require('electron').BrowserWindow.getAllWindows()[0].setContentSize(1200, 800)")
-  await geometry()
-  check('窗口放大后恢复两栏保存宽度', await evaluate(renderer,
-    "Math.abs(document.getElementById('left-sidebar').getBoundingClientRect().width - 280) <= 1 && Math.abs(document.getElementById('right-sidebar').getBoundingClientRect().width - 260) <= 1"))
+  await waitFor("Math.abs(document.getElementById('left-sidebar').getBoundingClientRect().width - 280) <= 1 && Math.abs(document.getElementById('right-sidebar').getBoundingClientRect().width - 260) <= 1", '窗口放大后未恢复两栏保存宽度')
+  check('窗口放大后恢复两栏保存宽度', true)
 
   await evaluate(renderer, "document.querySelector('#right-sidebar .outline-list button').focus()")
   await setVisible('right', false)
@@ -357,8 +360,10 @@ try {
     })()`))
     await evaluate(renderer, `(() => { const view = ${view}; view.scrollDOM.scrollTop = 0 })()`)
     await pause(200)
-    const shot = await renderer.send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false })
-    writeFileSync(`/tmp/evermd-sidebars-${theme}.png`, Buffer.from(shot.data, 'base64'))
+    if (process.argv.includes('--screenshots')) {
+      const shot = await renderer.send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false })
+      writeFileSync(`/tmp/evermd-sidebars-${theme}.png`, Buffer.from(shot.data, 'base64'))
+    }
   }
   const rendered = await geometry()
   await evaluate(renderer, "document.getElementById('source-toggle-btn').click()")
@@ -466,6 +471,56 @@ try {
   check('损坏的配置不阻止编辑器与侧栏初始化', await evaluate(renderer,
     `${view} && typeof ${prefs}.left.visible === 'boolean' && ['files','outline'].includes(${prefs}.right.content)`))
   check('恢复配置与重启均不重写任一文档', files.every((file, index) => readFileSync(file).equals(original[index].bytes) && statSync(file).mtimeMs === original[index].mtime))
+
+  // 性能回归仍验证真实行为：正文变化保留大纲节点，位置数据必须同时更新。
+  const performancePath = join(dir, '节点复用.md')
+  const performanceText = '# 复用验收\n\n正文甲。\n\n## 第二节\n\n正文乙。\n'
+  writeFileSync(performancePath, performanceText)
+  await evaluate(renderer, `window.electronAPI.openFilePath(${JSON.stringify(performancePath)})`)
+  await waitFor(`${view}.state.doc.toString() === ${JSON.stringify(performanceText)}`, '节点复用文档未打开')
+  for (const side of ['left', 'right']) {
+    await setContent(side, 'outline')
+    await setVisible(side, true)
+  }
+  await waitFor("document.querySelectorAll('.outline-list button').length === 4", '双侧大纲未初始化')
+  await evaluate(renderer, `(() => {
+    window.outlineReuseButtons = [...document.querySelectorAll('.outline-list button')]
+    const v = ${view}, position = v.state.doc.toString().indexOf('正文甲')
+    v.dispatch({ changes: { from: position, insert: '新增正文\\n\\n' }, userEvent: 'input.type' })
+  })()`)
+  await evaluate(renderer, '(async () => { await new Promise(requestAnimationFrame); await new Promise(requestAnimationFrame); return true })()')
+  check('正文输入和换行后两侧大纲保留原按钮', await evaluate(renderer,
+    "outlineReuseButtons.every((button, index) => button === document.querySelectorAll('.outline-list button')[index])"))
+  await clickOutline('right', 1)
+  await waitFor(`${view}.state.doc.lineAt(${view}.state.selection.main.head).text === '## 第二节'`, '复用大纲按钮使用了旧行号')
+  check('复用的大纲按钮跳转到插入换行后的正确标题', true)
+
+  // 相同根条目不能代表展开目录未变；重复刷新也不应销毁未变化的文件按钮。
+  const folder = join(dir, '展开目录')
+  const firstChild = join(folder, '原有.md')
+  const nextChild = join(folder, '新增.md')
+  mkdirSync(folder)
+  writeFileSync(firstChild, '# 原有')
+  for (const side of ['left', 'right']) await setContent(side, 'files')
+  const publishFiles = async () => {
+    const entries = await evaluate(renderer, 'window.electronAPI.listSiblings()')
+    await evaluate(main, `require('electron').BrowserWindow.getAllWindows()[0].webContents.send('siblings-changed', ${JSON.stringify(entries)})`)
+  }
+  await publishFiles()
+  await waitFor(`[...document.querySelectorAll('#left-sidebar .file-list button')].some(button => button.dataset.path === ${JSON.stringify(folder)})`, '目录未出现在列表')
+  await evaluate(renderer, `[...document.querySelectorAll('#left-sidebar .file-list button')].find(button => button.dataset.path === ${JSON.stringify(folder)}).click()`)
+  await waitFor(`[...document.querySelectorAll('#left-sidebar .file-list button')].some(button => button.dataset.path === ${JSON.stringify(firstChild)})`, '展开目录未读取')
+  await evaluate(renderer, "window.fileReuseButtons = [...document.querySelectorAll('.file-list button[data-path]')]")
+  await publishFiles()
+  await evaluate(renderer, '(async () => { await new Promise(requestAnimationFrame); await new Promise(requestAnimationFrame); return true })()')
+  check('重复目录事件保留未变化的文件按钮', await evaluate(renderer,
+    "fileReuseButtons.every(button => button.isConnected)"))
+  writeFileSync(nextChild, '# 新增')
+  await publishFiles()
+  await waitFor(`['left','right'].every(side => [...document.querySelectorAll('#' + side + '-sidebar .file-list button')].some(button => button.dataset.path === ${JSON.stringify(nextChild)}))`, '根列表相同时未刷新已展开子目录')
+  check('根条目不变时，两侧仍显示展开目录内新增文件', true)
+  check('子目录刷新完成后仍保留原有文件按钮', await evaluate(renderer,
+    "fileReuseButtons.every(button => button.isConnected)"))
   console.log(`左右侧栏真机验收通过，共 ${passed} 项。`)
 } catch (error) {
   console.error(error)

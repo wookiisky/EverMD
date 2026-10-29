@@ -3,20 +3,19 @@
 // 这个文件曾经是 milkdown/ProseMirror 的集成层，现在它只做一件事：
 // 把外壳需要的 18 个函数，接到 src/renderer/editor/core.ts 的 CodeMirror 6 缓冲区上。
 //
-// **导出的签名全部保持不变。** 外壳（标签、文件面板、大纲、导出、主题、IPC）
-// 不需要知道内部换了实现，它只认这几个函数。因此这次替换是局部的：外壳不动。
+// 外壳通过内容读写与状态快照接口操作文档；路径和视图偏好随文档一次安装。
 //
 // 设计原则见 docs/editor-architecture.md。一句话：缓冲区里存的就是文件的字节，
 // 渲染是叠在上面的一层装饰，保存时原样写回，不做任何序列化。
 
 import { type EditorState, type SelectionRange } from '@codemirror/state'
 import { EditorView } from '@codemirror/view'
-import { createEditorCore, getEditorHandle, type EditorHandle } from './core'
+import { createEditorCore, getEditorHandle, configureDocumentState, type EditorHandle, type DocumentViewOptions } from './core'
 import { footnoteDefinitions } from './footnotes'
 import { selectionHTMLFrom } from './clean-html'
 import { renderWholeDocument, restoreViewport } from '../print-layout'
 
-import { headingFlashEffect, setCleanExport as setCleanExportEffect, setDocumentFileUrlEffect, primeDocumentFileUrl } from './live-preview'
+import { headingFlashEffect, setCleanExport as setCleanExportEffect, setDocumentFileUrlEffect, documentFileUrlField, primeDocumentFileUrl } from './live-preview'
 import { runFormatCommand as runFormat, type FormatCommandId } from './format-commands'
 import { isChinese } from '../ui-language'
 import { documentAnchor } from './document-anchor'
@@ -641,11 +640,11 @@ export function getMarkdown(): string {
   return handle?.getText() ?? ''
 }
 
-export function setMarkdown(content: string, flushHistory = false): void {
+export function setMarkdown(content: string, flushHistory = false, options: DocumentViewOptions = {}): void {
   if (!handle) return
   // flush=true 换掉整个编辑状态，撤销栈一并清空。
   // 文档身份变化时（切文件、新建、外部重载）用它，撤销就永远够不到别的文档的内容。
-  handle.setText(content, flushHistory)
+  handle.setText(content, flushHistory, options)
 }
 
 export function getEditorView(): EditorView | null {
@@ -691,10 +690,10 @@ export function getEditorState(): EditorState | null {
 
 // 恢复一份存下来的状态。切回某个标签时用它，这条路不能绕 markdown，
 // 否则撤销栈和选区就丢了。
-export function restoreEditorState(state: EditorState): void {
+export function restoreEditorState(state: EditorState, options: DocumentViewOptions = {}): void {
   const view = handle?.getView()
   if (!view) return
-  view.setState(state)
+  view.setState(configureDocumentState(state, options))
   // setState 会换掉 view 的 DOM，焦点随之丢掉：把光标找回来，让切过去的标签能直接敲字。
   view.focus()
 }
@@ -724,7 +723,7 @@ export function applyMarkdownStyle(_style: Record<string, unknown> = {}): void {
 export function setDocumentFileUrl(url: string | null): void {
   primeDocumentFileUrl(url)
   const view = handle?.getView()
-  if (!view) return
+  if (!view || view.state.field(documentFileUrlField) === url) return
   view.dispatch({ effects: setDocumentFileUrlEffect.of(url) })
 }
 

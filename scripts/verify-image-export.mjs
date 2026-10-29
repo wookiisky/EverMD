@@ -170,6 +170,18 @@ async function runCase(testCase) {
       await sleep(250)
     }
 
+    // 导出钩子返回即应具备完整装饰，不能靠快照前的额外等待碰巧完成解析。
+    const prepared = await evaluate(renderer, `(async () => {
+      await window.__colamdPrintExport.enter()
+      const result = { blocks: document.querySelectorAll('.cm-md-html-block').length,
+        gaps: document.querySelectorAll('#editor .cm-gap').length }
+      window.__colamdPrintExport.exit()
+      return result
+    })()`)
+    if (prepared.blocks !== testCase.rows || prepared.gaps !== 0) {
+      throw new Error(`导出准备返回时正文尚未完整渲染：${JSON.stringify(prepared)}，应为 ${testCase.rows} 个块且无占位`)
+    }
+
     await evaluate(main, `(() => {
       const { BrowserWindow } = require('electron')
       BrowserWindow.getAllWindows()[0].webContents.send('menu-export-image', ${JSON.stringify(testCase.preset)})

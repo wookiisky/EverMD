@@ -16,6 +16,8 @@
 // 导出退回原来的行为（宁可少渲染，不要崩）。
 
 import { getEditorScroller, getEditorView } from './editor/editor'
+import { forceParsing } from '@codemirror/language'
+import { decorationsRefreshEffect } from './editor/live-preview'
 
 const STYLE_ID = 'colamd-paper-layout'
 /** 纸上的标记类。与 `exporting` 分开：那个管「藏起光标与属性区」，这个管「摊平」。 */
@@ -77,8 +79,15 @@ function setFullRender(on: boolean): boolean {
  */
 export async function renderWholeDocument(): Promise<boolean> {
   const ok = setFullRender(true)
-  await nextFrame()
   const deadline = Date.now() + RENDER_TIMEOUT_MS
+  const view = getEditorView()
+  if (view) {
+    // DOM 覆盖文末时，后半仍可能是尚未解析的源码。导出要显式推进全文解析，
+    // 再同步刷新装饰，不能依赖稍后才执行的预览定时器；每轮让出帧以免长文阻塞。
+    while (!forceParsing(view, view.state.doc.length, 50) && Date.now() < deadline) await nextFrame()
+    view.dispatch({ effects: decorationsRefreshEffect.of(null) })
+  }
+  await nextFrame()
   while (!fullyRendered() && Date.now() < deadline) await nextFrame()
   return ok
 }

@@ -284,6 +284,8 @@ interface WindowState {
   // True once the window's opening document (if any) has been handed to the
   // renderer, i.e. tab-open requests can be processed safely.
   initialDocDelivered: boolean
+  // 页面加载和渲染层监听均完成后取出一次，读取中的任务不会被重复 ready 再次执行。
+  pendingInitialDocument: (() => void) | null
 }
 
 /** 关闭请求先等待渲染层握手，握手后等待用户完成保存。 */
@@ -306,7 +308,7 @@ const pendingWindowCloseRequests = new Map<string, PendingWindowCloseRequest>()
 function getState(win: BrowserWindow): WindowState {
   let state = windowStates.get(win.id)
   if (!state) {
-    state = { filePath: null, browsePath: null, watcher: null, watchVersion: 0, isInternalSave: false, internalSaveCount: 0, lastKnownMtime: 0, lastInternalSaveContent: null, debounceTimer: null, siblingsTimer: null, dirty: false, closePromise: null, rendererReady: false, writeQueue: Promise.resolve(), closeAuthorized: false, tabFiles: [], pendingTabFiles: [], initialDocDelivered: false }
+    state = { filePath: null, browsePath: null, watcher: null, watchVersion: 0, isInternalSave: false, internalSaveCount: 0, lastKnownMtime: 0, lastInternalSaveContent: null, debounceTimer: null, siblingsTimer: null, dirty: false, closePromise: null, rendererReady: false, writeQueue: Promise.resolve(), closeAuthorized: false, tabFiles: [], pendingTabFiles: [], initialDocDelivered: false, pendingInitialDocument: null }
     windowStates.set(win.id, state)
   }
   return state
@@ -314,6 +316,16 @@ function getState(win: BrowserWindow): WindowState {
 
 function getWinFromEvent(event: Electron.IpcMainInvokeEvent): BrowserWindow | null {
   return BrowserWindow.fromWebContents(event.sender)
+}
+
+// 两端就绪后立即开始首次交付，先摘除任务以防异步读取期间重复收到 ready。
+function deliverInitialDocument(win: BrowserWindow): void {
+  if (win.isDestroyed()) return
+  const state = getState(win)
+  if (!state.rendererReady || !state.pendingInitialDocument) return
+  const deliver = state.pendingInitialDocument
+  state.pendingInitialDocument = null
+  deliver()
 }
 
 // Modification time of the file on disk, or 0 when it cannot be read.
@@ -430,42 +442,28 @@ function createWindow(
     if (typeof savedWindowState.zoom === 'number' && savedWindowState.zoom > 0) {
       win.webContents.setZoomFactor(savedWindowState.zoom)
     }
-    const deliver = (): void => {
+    const state = getState(win)
+    state.pendingInitialDocument = (): void => {
       if (filePath) {
         // The queued tab-opens must go out only after this document's
         // 'file-opened', otherwise both land in the same tab.
         void loadFileInWindow(win, filePath).then(() => {
-          getState(win).initialDocDelivered = true
+          if (win.isDestroyed()) return
+          state.initialDocDelivered = true
           flushPendingTabFiles(win)
         })
       } else if (initialContent) {
         // In-memory content (e.g. the Markdown cheatsheet) — no file, no watcher
         win.webContents.send('file-opened', { path: null, content: initialContent, fileUrl: initialFileUrl })
-        getState(win).initialDocDelivered = true
+        state.initialDocDelivered = true
         flushPendingTabFiles(win)
       } else {
-        getState(win).initialDocDelivered = true
+        state.initialDocDelivered = true
         flushPendingTabFiles(win)
       }
     }
-    // Wait for the renderer to be listening: a 'file-opened' that arrives
-    // before init registers its handlers is dropped, and the window opens
-    // empty. Polling here is bounded by the renderer's own init time.
-    if (getState(win).rendererReady) {
-      deliver()
-    } else {
-      const poll = setInterval(() => {
-        if (win.isDestroyed() || getState(win).rendererReady) {
-          clearInterval(poll)
-          if (!win.isDestroyed()) deliver()
-        }
-      }, 30)
-      // Unstoppable safety net: never block delivery forever.
-      setTimeout(() => {
-        clearInterval(poll)
-        if (!win.isDestroyed() && !getState(win).initialDocDelivered) deliver()
-      }, 10_000)
-    }
+    // ready 可能早于或晚于 did-finish-load；两个入口共用一次性交付任务。
+    deliverInitialDocument(win)
   })
 
   // Remember the window's own geometry, so the next launch opens where this one
@@ -2597,6 +2595,7 @@ ipcMain.on('renderer-ready', (event) => {
   const win = BrowserWindow.fromWebContents(event.sender)
   if (win) {
     getState(win).rendererReady = true
+    deliverInitialDocument(win)
     // The renderer is listening now, so it can be told the state it cannot read
     // for itself: a window restored into full screen must not keep the traffic
     // light clearance.
