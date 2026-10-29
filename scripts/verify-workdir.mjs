@@ -12,7 +12,7 @@ import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { spawnSync } from 'node:child_process'
 
-const ROOT = join(homedir(), 'Library', 'Caches', 'colamd-verify')
+const ROOT = join(homedir(), 'Library', 'Caches', 'evermd-verify')
 
 function wipe(path) {
   try {

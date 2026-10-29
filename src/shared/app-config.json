@@ -1,0 +1,26 @@
+{
+  "name": "evermd",
+  "appId": "com.wookiisky.evermd",
+  "configDirectory": ".evermd",
+  "updatesEnabled": false,
+  "labels": {
+    "zh": {
+      "about": "关于 evermd",
+      "hide": "隐藏 evermd",
+      "quit": "退出 evermd",
+      "welcome": "# **欢迎使用 evermd**\n\n开始写作...\n",
+      "defaultAppFailed": "无法将 evermd 设为默认应用。",
+      "defaultAppSet": "evermd 已设为 Markdown 和文本文件的默认应用。",
+      "upToDate": "evermd 已是最新版本"
+    },
+    "en": {
+      "about": "About evermd",
+      "hide": "Hide evermd",
+      "quit": "Quit evermd",
+      "welcome": "# **Welcome to evermd**\n\nStart typing here...\n",
+      "defaultAppFailed": "Failed to set evermd as the default app.",
+      "defaultAppSet": "evermd is now the default app for Markdown and text files.",
+      "upToDate": "evermd is up to date"
+    }
+  }
+}

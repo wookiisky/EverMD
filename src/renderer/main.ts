@@ -19,6 +19,7 @@ import { FilePanelView } from './file-panel-view'
 import { DocumentFileContent } from './document-file-content'
 import { DocumentStatisticsScheduler } from './document-statistics-scheduler'
 import statisticsLabels from '../shared/document-statistics-labels.json'
+import appConfig from '../shared/app-config.json'
 import { EditorNavigation } from './editor-navigation'
 import { prepareDocumentsForClose } from './document-close'
 import type { NavigationAnchor } from './navigation-history'
@@ -206,7 +207,7 @@ function clearSaveStatus(): void {
 }
 
 // After the disk version is loaded, the dropped version still exists in
-// ~/.colamd/recovered. Saying so is the entire point of keeping it, so the hint
+// ~/.evermd/recovered. Saying so is the entire point of keeping it, so the hint
 // takes the save-status slot for a while and opens the folder when clicked.
 function showRecoveryHint(recoveryPath: string): void {
   const el = saveStatusEl()
@@ -1139,7 +1140,7 @@ function updateSourceToggle(): void {
 function updateUiLanguage(): void {
   const zh = isChinese()
   document.documentElement.lang = zh ? 'zh-CN' : 'en'
-  document.title = 'ColaMD'
+  document.title = appConfig.name
   untitledName = zh ? '未命名' : 'Untitled'
   sidebars.updateLabels()
   const menuBtn = document.getElementById('app-menu-btn')

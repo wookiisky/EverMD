@@ -15,7 +15,7 @@ assertBuildFresh()
 const root = fileURLToPath(new URL('..', import.meta.url))
 const require = createRequire(import.meta.url)
 const { dir, udd } = verifyWorkdir('document-lifecycle-ui')
-const recoveryDir = resolve(homedir(), '.colamd', 'recovered')
+const recoveryDir = resolve(homedir(), '.evermd', 'recovered')
 const token = '生命周期验收-' + randomUUID()
 const firstDraft = token + '-第一份未命名正文'
 const secondDraft = token + '-第二份未命名正文'

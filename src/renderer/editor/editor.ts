@@ -18,6 +18,7 @@ import { renderWholeDocument, restoreViewport } from '../print-layout'
 import { headingFlashEffect, setCleanExport as setCleanExportEffect, setDocumentFileUrlEffect, documentFileUrlField, primeDocumentFileUrl } from './live-preview'
 import { runFormatCommand as runFormat, type FormatCommandId } from './format-commands'
 import { isChinese } from '../ui-language'
+import appConfig from '../../shared/app-config.json'
 import { documentAnchor } from './document-anchor'
 import { isDiagramZoomed } from './mermaid-bridge'
 import { hideBlankLinesField, setHideBlankLinesEffect } from './blank-line-visibility'
@@ -162,7 +163,7 @@ export function runFormatCommand(id: FormatCommandId): void {
 let handle: EditorHandle | null = null
 
 function defaultContent(): string {
-  return isChinese() ? '# **欢迎使用 ColaMD**\n\n开始写作...\n' : '# **Welcome to ColaMD**\n\nStart typing here...\n'
+  return appConfig.labels[isChinese() ? 'zh' : 'en'].welcome
 }
 
 export async function createEditor(

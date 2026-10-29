@@ -4,15 +4,17 @@
 
 ## 正式版与开发版并行运行
 
-机器上已有正式版 ColaMD 运行时，开发版使用独立的 Electron 用户数据目录。直接运行 `npm run dev` 会与正式版共用默认目录，触发单实例限制，开发进程退出并激活已有的正式版窗口。
+evermd 与原 ColaMD 使用独立的应用标识、Electron 用户数据目录和 `~/.evermd/` 配置目录，可以同时运行，不自动迁移 `~/.colamd/` 的旧配置。evermd 尚未配置独立发布源，自动更新及其菜单入口暂时停用。
+
+机器上已有正式版 evermd 运行时，开发版需要另指定 Electron 用户数据目录，避免触发单实例限制。
 
 在项目根目录执行以下命令启动开发版（macOS / Linux）：
 
 ```bash
-npm run dev -- -- --user-data-dir="$PWD/node_modules/.cache/colamd-dev"
+npm run dev -- -- --user-data-dir="$PWD/node_modules/.cache/evermd-dev"
 ```
 
-该命令已于 2026-10-26 在 macOS arm64 上验证，正式版运行期间，开发版可独立创建窗口并完成编辑器初始化。目录位于已被 Git 忽略的 `node_modules/` 内，保存开发版的 Electron 用户配置与缓存；重新执行 `npm ci` 会清除它。自定义主题与恢复副本仍使用 `~/.colamd/` 下的共享目录。
+该目录位于已被 Git 忽略的 `node_modules/` 内，保存开发版的 Electron 用户配置与缓存；重新执行 `npm ci` 会清除它。自定义主题与恢复副本仍使用 `~/.evermd/` 下的共享目录。
 
 ## 包体积
 

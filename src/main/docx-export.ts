@@ -1,4 +1,5 @@
 import { nativeImage } from 'electron'
+import appConfig from '../shared/app-config.json'
 import { basename, dirname, extname, isAbsolute, resolve } from 'path'
 import { fileURLToPath } from 'url'
 // 这三个必须在 package.json 里**直接声明**。
@@ -186,7 +187,7 @@ export async function markdownToDocx(input: DocxExportInput): Promise<Buffer> {
   const tree = unified().use(remarkParse).use(remarkGfm)
     .data('micromarkExtensions', [cjkEmphasisSyntax(input.content)]).parse(input.content) as MarkdownNode
   const document = new Document({
-    creator: 'ColaMD',
+    creator: appConfig.name,
     title: input.sourcePath ? basename(input.sourcePath, extname(input.sourcePath)) : 'Untitled',
     sections: [{ children: blockNodes(tree.children, input.sourcePath, input.images) }],
   })

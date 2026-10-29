@@ -1,5 +1,5 @@
-appId: ai.marswave.colamd
-productName: ColaMD
+appId: com.wookiisky.evermd
+productName: evermd
 copyright: Copyright © 2024-2026 marswave.ai
 
 directories:
@@ -95,12 +95,12 @@ linux:
   # AppImage shipped exactly one hicolor entry, and start menus / taskbars ask
   # for standard sizes like 48 or 256 first (#127).
   # StartupWMClass must match Electron's window class, which is package.json's
-  # lowercase name (colamd). The default was productName (ColaMD), and the
+  # lowercase name (evermd). The default was productName (ColaMD), and the
   # taskbar could not associate a running window with the desktop entry.
   icon: resources/icons
   desktop:
     entry:
-      StartupWMClass: colamd
+      StartupWMClass: evermd
 
 nsis:
   # No spaces: the default "${productName} Setup ${version}.exe" gets sanitized
@@ -112,7 +112,5 @@ nsis:
   oneClick: false
   allowToChangeInstallationDirectory: true
 
-publish:
-  provider: github
-  owner: marswaveai
-  repo: ColaMD
+# 独立应用尚未配置发布源，禁止从 ColaMD 获取更新。
+publish: null

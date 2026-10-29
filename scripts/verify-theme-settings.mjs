@@ -367,7 +367,7 @@ async function verifyThemeSwitching(custom, builtins) {
   } finally {
     await evaluate(main,`(() => {require('fs/promises').writeFile=globalThis.__themeOriginalWriteFile;delete globalThis.__themeOriginalWriteFile})()`)
   }
-  const recoveryDir=join(homedir(),'.colamd','recovered')
+  const recoveryDir=join(homedir(),'.evermd','recovered')
   const before=new Set(existsSync(recoveryDir)?readdirSync(recoveryDir):[])
   await selectDraft(secondId)
   await action('switchDiscard')
@@ -382,7 +382,7 @@ async function verifyThemeSwitching(custom, builtins) {
   check('恢复副本路径告知用户且未应用目标主题',await evaluate(renderer,`document.getElementById('theme-settings-status').textContent.includes(${JSON.stringify(recovered??'missing-recovery')})&&localStorage.getItem('colamd-theme')===${JSON.stringify(testThemeId)}`))
   await selectDraft(testThemeId)
   await changeField('interface','colors.text','#234567')
-  const themePath=join(homedir(),'.colamd','themes',`${encodeURIComponent(testThemeId)}.theme.json`)
+  const themePath=join(homedir(),'.evermd','themes',`${encodeURIComponent(testThemeId)}.theme.json`)
   const original=readFileSync(themePath,'utf8')
   rmSync(themePath)
   mkdirSync(themePath)
@@ -669,7 +669,7 @@ try {
     await waitFor(`localStorage.getItem('colamd-theme')===${JSON.stringify(testThemeId)}&&getComputedStyle(document.querySelector('.cm-md-atxheading1')).color==='rgb(153, 34, 85)'`, '应用重启未恢复已保存主题')
     check('真实进程重启恢复主题颜色和独立排版配置',(await evaluate(renderer,`window.electronAPI.listThemeDefinitions()`)).find(theme=>theme.id===testThemeId).typography.paragraphSpacing===1.5)
     const oldName=`verify-theme-settings-${Date.now()}.css`
-    const oldPath=join(homedir(),'.colamd','themes',oldName)
+    const oldPath=join(homedir(),'.evermd','themes',oldName)
     const oldCSS=`/* ${oldName} */\n:root{--text-color:#314159;--bg-color:#fefefe}\n#editor .cm-content .cm-md-atxheading1{color:#265358}\n@media(min-width:1px){#editor .cm-content{letter-spacing:.01em}}\n`
     writeFileSync(oldPath,oldCSS)
     createdLegacyFiles.add(oldPath)
@@ -683,7 +683,7 @@ try {
       const id=`legacy-${createHash('sha256').update(candidate).digest('hex').slice(0,16)}`
       if(id.localeCompare(migratedId)<0){duplicateName=candidate;duplicateId=id}
     }
-    const duplicatePath=join(homedir(),'.colamd','themes',duplicateName)
+    const duplicatePath=join(homedir(),'.evermd','themes',duplicateName)
     writeFileSync(duplicatePath,oldCSS)
     createdLegacyFiles.add(duplicatePath)
     createdThemeIds.add(duplicateId)
@@ -828,7 +828,7 @@ try {
   child?.kill('SIGTERM')
   stopVerifyApp(udd)
   // 删除范围只包含本脚本创建的随机主题标识，失败时也不留用户主题目录残渣。
-  for(const id of createdThemeIds)rmSync(join(homedir(),'.colamd','themes',`${encodeURIComponent(id)}.theme.json`),{force:true})
+  for(const id of createdThemeIds)rmSync(join(homedir(),'.evermd','themes',`${encodeURIComponent(id)}.theme.json`),{force:true})
   for(const path of createdLegacyFiles)rmSync(path,{force:true})
   for(const path of createdRecoveryFiles)rmSync(path,{force:true})
 }

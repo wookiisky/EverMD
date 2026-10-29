@@ -17,7 +17,12 @@ import documentCloseLabels from '../shared/document-close-labels.json'
 import type { ThemeDefinition, ThemeDraftRecoveryResult } from '../shared/theme-config'
 import { BUILTIN_THEMES, ThemeValidationError, validateThemeDefinition } from '../shared/theme-definition'
 import themeFileLabels from '../shared/theme-file-labels.json'
+import appConfig from '../shared/app-config.json'
 import { ThemeStorage, parseThemeFile, serializeThemeFile, themeFromLegacyCSS, recoverThemeDraft } from './theme-storage'
+
+// 在读取配置路径和获取单实例锁前确定身份，开发版也与 ColaMD 分开。
+app.setName(appConfig.name)
+if (process.platform === 'win32') app.setAppUserModelId(appConfig.appId)
 
 const startupStartedAt = performance.now()
 const startupTraceEnabled = process.env.COLAMD_STARTUP_TRACE === '1'
@@ -38,11 +43,11 @@ function writeStartupTrace(): void {
 }
 
 
-const themesDir = join(app.getPath('home'), '.colamd', 'themes')
+const themesDir = join(app.getPath('home'), appConfig.configDirectory, 'themes')
 const themeStorage = new ThemeStorage(themesDir)
 // 启动和 IPC 共用一次加载，主题窗口不会读到迁移一半的列表。
 let themeStorageReady: Promise<ThemeDefinition[]> | null = null
-const recoveryDir = join(app.getPath('home'), '.colamd', 'recovered')
+const recoveryDir = join(app.getPath('home'), appConfig.configDirectory, 'recovered')
 const releaseNoticePath = join(app.getPath('userData'), 'release-notice.json')
 
 // The shell's top row, in CSS pixels: the window controls overlay on Windows has
@@ -114,7 +119,7 @@ function loadThemeLibrary(): Promise<ThemeDefinition[]> {
 }
 
 // --- Recent files + session restore (#28, #45) ---
-const recentStorePath = join(app.getPath('home'), '.colamd', 'recent.json')
+const recentStorePath = join(app.getPath('home'), appConfig.configDirectory, 'recent.json')
 let recentStore: { recent: string[]; restoreOnLaunch: boolean } = { recent: [], restoreOnLaunch: true }
 const languagePreferencePath = join(app.getPath('userData'), 'language.json')
 
@@ -507,7 +512,7 @@ function createWindow(
 function updateTitle(win: BrowserWindow): void {
   const state = getState(win)
   const fileName = state.filePath ? basename(state.filePath) : 'Untitled'
-  win.setTitle(`${fileName} — ColaMD`)
+  win.setTitle(`${fileName} — ${appConfig.name}`)
 }
 
 function suggestFileName(win: BrowserWindow, content?: string): string | undefined {
@@ -1901,7 +1906,7 @@ function setAsDefaultApp(): void {
 
   const script = `
     ObjC.import('CoreServices');
-    var bundleID = 'ai.marswave.colamd';
+    var bundleID = '${appConfig.appId}';
     var exts = ['md', 'markdown', 'mdown', 'mkd', 'txt'];
     var results = [];
     for (var i = 0; i < exts.length; i++) {
@@ -1926,7 +1931,7 @@ function setAsDefaultApp(): void {
     if (error) {
       dialog.showMessageBox({
         type: 'error',
-        message: 'Failed to set ColaMD as the default app.',
+        message: appConfig.labels[getPreferredCheatsheetLanguage()].defaultAppFailed,
         detail: stderr || error.message
       })
       return
@@ -1937,7 +1942,7 @@ function setAsDefaultApp(): void {
       dialog.showMessageBox({
         type: 'info',
         message: allOk
-          ? 'ColaMD is now the default app for Markdown and text files.'
+          ? appConfig.labels[getPreferredCheatsheetLanguage()].defaultAppSet
           : 'Some file types could not be associated. System Settings may need manual adjustment.',
         detail: results.join('\n')
       })
@@ -1999,12 +2004,12 @@ function buildMenu(): void {
         sourceMode: '切换 Markdown 源码', hideBlankLines: '隐藏空行',
         pageWidth: '正文宽度', pageWidthNarrow: '窄', pageWidthStandard: '标准', pageWidthWide: '宽',
         importTheme: '导入主题...', whatsNew: '新功能演示',
-        cheatsheet: 'Markdown 语法', about: '关于 ColaMD', checkForUpdates: '检查更新...', updateAvailable: '发现新版本', close: '关闭窗口',
+        cheatsheet: 'Markdown 语法', about: appConfig.labels.zh.about, checkForUpdates: '检查更新...', updateAvailable: '发现新版本', close: '关闭窗口',
         undo: '撤销', redo: '重做', cut: '剪切', copy: '复制', paste: '粘贴', selectAll: '全选',
         actualSize: '恢复默认字号', zoomIn: '放大字号', zoomOut: '缩小字号', fullscreen: '切换全屏', playSlideshow: '放映幻灯片',
         fontSettings: '编辑器字体…',
         language: '界面语言', chinese: '中文', english: 'English',
-        hide: '隐藏 ColaMD', hideOthers: '隐藏其他应用', showAll: '显示全部', quit: '退出 ColaMD',
+        hide: appConfig.labels.zh.hide, hideOthers: '隐藏其他应用', showAll: '显示全部', quit: appConfig.labels.zh.quit,
         minimize: '最小化', zoom: '缩放', front: '前置全部窗口',
       }
     : {
@@ -2017,12 +2022,12 @@ function buildMenu(): void {
         sourceMode: 'Toggle Markdown Source', hideBlankLines: 'Hide Blank Lines',
         pageWidth: 'Text Width', pageWidthNarrow: 'Narrow', pageWidthStandard: 'Standard', pageWidthWide: 'Wide',
         importTheme: 'Import Theme...', whatsNew: "What's New",
-        cheatsheet: 'Markdown Syntax', about: 'About ColaMD', checkForUpdates: 'Check for Updates...', updateAvailable: 'Update Available', close: 'Close Window',
+        cheatsheet: 'Markdown Syntax', about: appConfig.labels.en.about, checkForUpdates: 'Check for Updates...', updateAvailable: 'Update Available', close: 'Close Window',
         undo: 'Undo', redo: 'Redo', cut: 'Cut', copy: 'Copy', paste: 'Paste', selectAll: 'Select All',
         actualSize: 'Reset Font Size', zoomIn: 'Larger Text', zoomOut: 'Smaller Text', fullscreen: 'Toggle Full Screen', playSlideshow: 'Play Slideshow',
         fontSettings: 'Editor Font…',
         language: 'Language', chinese: '中文', english: 'English',
-        hide: 'Hide ColaMD', hideOthers: 'Hide Others', showAll: 'Show All', quit: 'Quit ColaMD',
+        hide: appConfig.labels.en.hide, hideOthers: 'Hide Others', showAll: 'Show All', quit: appConfig.labels.en.quit,
         minimize: 'Minimize', zoom: 'Zoom', front: 'Bring All to Front',
       }
 
@@ -2074,7 +2079,7 @@ function buildMenu(): void {
 
   const template: Electron.MenuItemConstructorOptions[] = [
     ...(isMac ? [{
-      label: 'ColaMD',
+      label: appConfig.name,
       submenu: [
         { label: labels.about, role: 'about' as const },
         { type: 'separator' as const },
@@ -2314,7 +2319,7 @@ function buildMenu(): void {
         },
         {
           label: labels.checkForUpdates,
-          enabled: app.isPackaged,
+          enabled: app.isPackaged && appConfig.updatesEnabled,
           click: () => { void checkForUpdates(true) }
         },
         ...(latestVersion ? [{
@@ -2463,7 +2468,7 @@ function showUpdateMessage(options: Electron.MessageBoxOptions): Promise<Electro
 }
 
 async function checkForUpdates(manual = false): Promise<void> {
-  if (!app.isPackaged) return
+  if (!app.isPackaged || !appConfig.updatesEnabled) return
   // Once a day, not once a launch: the check is a request for a small manifest,
   // and five launches in a day meant five identical requests for the same answer
   // (2026-09-21). A manual check is the user asking now, and it restarts the day.
@@ -2489,7 +2494,7 @@ async function checkForUpdates(manual = false): Promise<void> {
 }
 
 function setupAutoUpdater(): void {
-  if (!app.isPackaged) return
+  if (!app.isPackaged || !appConfig.updatesEnabled) return
 
   autoUpdater.autoDownload = false
   autoUpdater.autoInstallOnAppQuit = true
@@ -2513,7 +2518,7 @@ function setupAutoUpdater(): void {
     void showUpdateMessage({
       type: 'info',
       buttons: [chinese ? '好' : 'OK'],
-      message: chinese ? 'ColaMD 已是最新版本' : 'ColaMD is up to date',
+      message: appConfig.labels[chinese ? 'zh' : 'en'].upToDate,
       detail: chinese ? `当前版本：v${app.getVersion()}` : `Current version: v${app.getVersion()}`
     })
   })
@@ -2549,11 +2554,13 @@ function setupAutoUpdater(): void {
 }
 
 ipcMain.handle('download-update', async () => {
+  if (!appConfig.updatesEnabled) return
   updateDownloadRequested = true
   await autoUpdater.downloadUpdate()
 })
 
 ipcMain.handle('install-update', () => {
+  if (!appConfig.updatesEnabled) return
   autoUpdater.quitAndInstall(false, true)
 })
 
