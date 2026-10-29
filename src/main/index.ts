@@ -9,6 +9,7 @@ import { watch, FSWatcher, existsSync, readFileSync, writeFileSync, statSync } f
 import { resolveMarkdownLink } from './markdown-link'
 import type { SidebarPreferences } from '../shared/sidebar-config'
 import sidebarLabels from '../shared/sidebar-labels.json'
+import viewLabels from '../shared/view-labels.json'
 import type { NavigationFileResult, NavigationMenuState } from '../shared/navigation-config'
 import navigationLabels from '../shared/navigation-labels.json'
 import type { DocumentCloseChoice, DocumentCloseRequest } from '../shared/document-close-config'
@@ -1673,6 +1674,8 @@ const sidebarWindowOrder = new Set<BrowserWindow>()
 let currentPageWidth: 'narrow' | 'standard' | 'wide' = 'standard'
 // 渲染层持久化视图偏好，主进程只同步原生菜单勾选状态。
 let currentHideBlankLines = false
+// 全宽只改变渲染布局，选择由渲染层持久化并跨窗口同步。
+let currentWideMedia = false
 let themeMenuItems: Array<{ id: string; theme: string }> = []
 // Enumerate installed system font families for the font settings dialog (#7752855).
 // Uses NSFontManager via JXA — the same source as the macOS font panel — so the
@@ -1839,6 +1842,12 @@ ipcMain.handle('report-page-width', (_event, width: unknown) => {
 ipcMain.handle('report-hide-blank-lines', (_event, enabled: boolean) => {
   currentHideBlankLines = enabled
   const item = Menu.getApplicationMenu()?.getMenuItemById('hide-blank-lines')
+  if (item) item.checked = enabled
+})
+
+ipcMain.handle('report-wide-media', (_event, enabled: boolean) => {
+  currentWideMedia = enabled
+  const item = Menu.getApplicationMenu()?.getMenuItemById('wide-media')
   if (item) item.checked = enabled
 })
 
@@ -2242,6 +2251,13 @@ function buildMenu(): void {
         },
         { type: 'separator' },
         { label: labels.fontSettings, click: () => sendToFocused('open-font-settings') },
+        {
+          id: 'wide-media',
+          label: viewLabels[preferredCheatsheetLanguage].wideMedia,
+          type: 'checkbox',
+          checked: currentWideMedia,
+          click: (item) => sendToFocused('set-wide-media', item.checked)
+        },
         {
           // The column's width is the renderer's preference, next to the panel's
           // side and its width; this menu only asks for the change and then shows

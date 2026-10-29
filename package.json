@@ -37,6 +37,7 @@
     "verify:document-lifecycle-ui": "node scripts/verify-document-lifecycle-ui.mjs",
     "verify:blank-lines": "node scripts/verify-blank-lines.mjs",
     "verify:blank-lines-ui": "node scripts/verify-blank-lines-ui.mjs",
+    "verify:wide-media": "node scripts/verify-wide-media-ui.mjs",
     "verify:paragraph-spacing": "node scripts/verify-paragraph-spacing.mjs",
     "verify:links": "node scripts/verify-links.mjs",
     "verify:features": "node scripts/verify-features.mjs",

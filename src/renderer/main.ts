@@ -109,6 +109,18 @@ function applyPageWidth(width: string): void {
 
 applyPageWidth(localStorage.getItem(PAGE_WIDTH_KEY) ?? 'standard')
 
+const WIDE_MEDIA_KEY = 'colamd-wide-media'
+
+// 只切换样式，不派发文档事务，偏好也不随标签页快照恢复。
+function applyWideMedia(enabled: boolean): void {
+  document.body.classList.toggle('wide-media', enabled)
+  localStorage.setItem(WIDE_MEDIA_KEY, enabled ? '1' : '0')
+  void window.electronAPI.reportWideMedia(enabled)
+  getEditorView()?.requestMeasure()
+}
+
+applyWideMedia(localStorage.getItem(WIDE_MEDIA_KEY) === '1')
+
 const HIDE_BLANK_LINES_KEY = 'colamd-hide-blank-lines'
 // 偏好属于应用视图，不随某个标签页的 EditorState 快照恢复。
 let hideBlankLines = localStorage.getItem(HIDE_BLANK_LINES_KEY) === '1'
@@ -123,6 +135,7 @@ function applyHideBlankLines(enabled: boolean): void {
 
 window.addEventListener('storage', (event) => {
   if (event.key === HIDE_BLANK_LINES_KEY) applyHideBlankLines(event.newValue === '1')
+  if (event.key === WIDE_MEDIA_KEY) applyWideMedia(event.newValue === '1')
 })
 
 function setMarkdownProgrammatically(content: string, flushHistory = false): void {
@@ -1921,6 +1934,7 @@ async function init(): Promise<void> {
   sourceToggleBtnEl().addEventListener('click', toggleSourceMode)
   api.onToggleSourceMode(() => toggleSourceMode())
   api.onSetHideBlankLines(applyHideBlankLines)
+  api.onSetWideMedia(applyWideMedia)
   // Source-mode edits update the word count and mark the doc dirty in real time
   sourceEl().addEventListener('input', () => {
     setDirty()

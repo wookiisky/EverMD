@@ -114,6 +114,10 @@ export interface ElectronAPI {
   onSetHideBlankLines: (callback: (enabled: boolean) => void) => void
   /** 同步原生菜单的勾选状态。 */
   reportHideBlankLines: (enabled: boolean) => Promise<void>
+  /** 表格、独立图片和 Mermaid 仅放宽渲染宽度，正文与源码列宽不变。 */
+  onSetWideMedia: (callback: (enabled: boolean) => void) => void
+  /** 同步全宽视图的原生菜单勾选状态。 */
+  reportWideMedia: (enabled: boolean) => Promise<void>
   setEditorFont: (prefs: { family: string; size: number }) => Promise<void>
   listSystemFonts: () => Promise<string[]>
   onEditorFontChanged: (callback: (prefs: { family: string; size: number }) => void) => void
@@ -290,6 +294,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('set-hide-blank-lines', (_event, enabled: boolean) => callback(enabled))
   },
   reportHideBlankLines: (enabled: boolean) => ipcRenderer.invoke('report-hide-blank-lines', enabled),
+  onSetWideMedia: (callback: (enabled: boolean) => void) => {
+    ipcRenderer.on('set-wide-media', (_event, enabled: boolean) => callback(enabled))
+  },
+  reportWideMedia: (enabled: boolean) => ipcRenderer.invoke('report-wide-media', enabled),
   setEditorFont: (prefs: { family: string; size: number }) => {
     return ipcRenderer.invoke('set-editor-font', prefs)
   },

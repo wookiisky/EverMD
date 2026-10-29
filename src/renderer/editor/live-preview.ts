@@ -613,6 +613,10 @@ function collectMermaid(state: EditorState, ranges: DecorationRange[], front: Ra
       const lastLineStart = text.lastIndexOf('\n', node.to - 1)
       const code = text.slice(bodyStart, lastLineStart === -1 ? node.to : lastLineStart)
       if (!code.trim()) return
+      if (node.node.parent?.name === 'Document') {
+        const from = state.doc.lineAt(node.from).from
+        ranges.push({ from, to: from, deco: BLOCK('cm-md-mermaid-standalone') })
+      }
       ranges.push({
         from: node.from,
         to: node.to,
@@ -816,6 +820,10 @@ function collectTables(state: EditorState, ranges: DecorationRange[], front: Ran
       if (isBlockActive(state, node.from, node.to)) {
         pushBlockLines(state, node.from, node.to, 'cm-md-table', ranges)
         return false
+      }
+      if (node.node.parent?.name === 'Document') {
+        const from = state.doc.lineAt(node.from).from
+        ranges.push({ from, to: from, deco: BLOCK('cm-md-table-standalone') })
       }
       ranges.push({
         from: node.from,
@@ -1050,6 +1058,22 @@ function collectImages(state: EditorState, ranges: DecorationRange[], front: Ran
     const source = state.doc.sliceString(node.from, node.to)
     const parsed = parseImage(source)
     if (!parsed) return false
+    // 只扩展顶层独立图片，链接包裹的图片也适用；混排、列表与引用保留所属容器。
+    const image = node.node
+    const parent = image.parent
+    const opening = parent?.firstChild
+    const closing = image.nextSibling
+    const block = parent?.name === 'Link' && opening?.name === 'LinkMark' && closing?.name === 'LinkMark'
+      && !state.doc.sliceString(opening.to, image.from).trim()
+      && !state.doc.sliceString(image.to, closing.from).trim()
+      ? parent : image
+    const paragraph = block.parent
+    if (paragraph?.name === 'Paragraph' && paragraph.parent?.name === 'Document'
+      && !state.doc.sliceString(paragraph.from, block.from).trim()
+      && !state.doc.sliceString(block.to, paragraph.to).trim()) {
+      const from = state.doc.lineAt(paragraph.from).from
+      ranges.push({ from, to: from, deco: BLOCK('cm-md-image-standalone') })
+    }
     ranges.push({
       from: node.from,
       to: node.to,

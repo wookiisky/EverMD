@@ -22,6 +22,7 @@ import { searchHighlightField } from './search-highlight'
 import { stateExtensions, editableCompartment, bodyStart } from './state'
 import { editorTheme } from './source-theme'
 import { cursorColors } from './cursor-colors'
+import { wideMediaLayout } from './wide-media-layout'
 
 /** 与目标文档一起安装的显示配置，不属于编辑历史。 */
 export interface DocumentViewOptions {
@@ -161,6 +162,7 @@ export function createEditorCore(parent: HTMLElement, options: EditorOptions = {
     // 以下是 view 层：选区绘制、拖放光标、特殊字符、主题
     drawSelection(),
     cursorColors,
+    wideMediaLayout,
     // 自动换行。CodeMirror 默认**不换行**，长行会横向滚动；markdown 正文必须换行。
     EditorView.lineWrapping,
     dropCursor(),

@@ -63,6 +63,20 @@
   box-sizing: border-box;
 }
 
+/* 全宽只放宽目标行的可用空间，沿用原来的表格排版、图片尺寸与 Mermaid 缩放。
+ * 使用滚动条以内的实际宽度，侧栏与窗口变化由布局测量统一更新。
+ * 导出、放映和打印各有布局；图片导出的快照也没有 .cm-editor 外壳。 */
+@media screen {
+  body.wide-media:not(.exporting):not(.presenting):not(.paper):not(.slides-printing) #editor > .cm-editor > .cm-scroller > .cm-content > .cm-line:is(
+    .cm-md-table-standalone:has(> .cm-md-table-widget),
+    .cm-md-image-standalone:has(.cm-md-image:not(.cm-md-image-failed)),
+    .cm-md-mermaid-standalone:has(> .cm-md-mermaid-ready:not(.cm-md-mermaid-failed))
+  ) {
+    width: calc(var(--editor-available-width, 100%) - 80px);
+    margin-inline: calc((100% - var(--editor-available-width, 100%) + 80px) / 2);
+  }
+}
+
 /* 行的归零。必须用两个类才压得住 CodeMirror baseTheme 的 `0 2px 0 6px`。
  * 下面所有行级内边距都写在这条之后，靠顺序覆盖它。 */
 .cm-content .cm-line {
