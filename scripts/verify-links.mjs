@@ -130,6 +130,37 @@ async function unitChecks() {
     ])
     assert.equal(res, '<pre><code>const a = 1;\nconst b = 2;</code></pre>')
   })
+
+  // 导出使用真实装饰状态，不能把正在编辑的链接源码带进输出。
+  const previewBundle = await build({
+    stdin: {
+      contents: `export { stateExtensions } from './src/renderer/editor/state';
+        export { livePreview, livePreviewField, setCleanExport } from './src/renderer/editor/live-preview';
+        export { EditorState } from '@codemirror/state';`,
+      resolveDir: ROOT,
+    },
+    bundle: true, write: false, platform: 'node', format: 'esm', logLevel: 'silent',
+  })
+  const { stateExtensions, livePreview, livePreviewField, setCleanExport, EditorState } =
+    await import('data:text/javascript;base64,' + Buffer.from(previewBundle.outputFiles[0].text).toString('base64'))
+  const tableText = '正文\n\n| [表格链接](https://example.com) |\n| --- |\n| 内容 |'
+  let state = EditorState.create({ doc: tableText, selection: { anchor: tableText.indexOf('表格链接') }, extensions: [stateExtensions(), livePreview] })
+  const tableLinks = () => {
+    const hrefs = []
+    state.field(livePreviewField).between(0, state.doc.length, (_from, _to, decoration) => {
+      if (decoration.spec.class === 'cm-md-link') hrefs.push(decoration.spec.attributes?.['data-href'])
+    })
+    return hrefs
+  }
+  const doc = state.doc, selection = state.selection
+  check('表格编辑状态不添加可导航链接装饰', () => assert.deepEqual(tableLinks(), []))
+  state = state.update({ effects: setCleanExport.of(true) }).state
+  check('干净导出恢复表格链接装饰', () => assert.deepEqual(tableLinks(), ['https://example.com']))
+  state = state.update({ effects: setCleanExport.of(false) }).state
+  check('导出结束恢复表格链接源码', () => assert.deepEqual(tableLinks(), []))
+  check('导出切换不修改文档和选区', () => { assert.equal(state.doc, doc); assert.equal(state.selection, selection) })
+  state = state.update({ selection: { anchor: 0 } }).state
+  check('光标离开表格后恢复链接装饰', () => assert.deepEqual(tableLinks(), ['https://example.com']))
 }
 
 async function connect(port) {
@@ -169,9 +200,20 @@ async function runtimeChecks() {
   const source = join(notes, 'source.md'), target = join(notes, '中文 空格.md'), childFile = join(notes, 'child', 'child.md')
   const lineFile = join(notes, 'lines.md'), largeFile = join(notes, 'large.md')
   const anchorFile = join(notes, 'anchors.md')
+  const editingFile = join(notes, 'table-editing.md')
   const lineText = ['---', 'title: Lines', '---', ...Array.from({ length: 143 }, (_, i) => `Paragraph ${i}.`), 'LINE_147_TARGET', 'Last line.'].join('\r\n')
   const largeText = [...Array.from({ length: 146 }, () => 'Long wrapped paragraph. '.repeat(180)), 'LARGE_147_TARGET', 'Last line.'].join('\n')
   const targetText = '# Destination\n\n' + 'Paragraph.\n\n'.repeat(100) + '## 目标标题\n\nTail.\n'
+  const tableSource = '| [表格网页](https://example.com) | 说明 |\n| --- | --- |\n| [表格链接](中文%20空格.md) | 编辑入口 |\n| [表格文内](#source) | 正文 |\n| [空地址]() | 空地址 |'
+  const nestedLinks = [
+    '[**加粗文字**](https://example.com/bold)',
+    '[`代码文字`](https://example.com/code)',
+    '[![图片文字](pixel.png)](https://example.com/image)',
+    '[<em>HTML文字</em>](https://example.com/html)',
+    '[$x^2$](https://example.com/math)',
+    '[==高亮文字==](https://example.com/highlight)',
+  ]
+  const nestedTableSource = '| 嵌套链接 | 说明 |\n| --- | --- |\n' + nestedLinks.map(link => `| ${link} | 嵌套编辑入口 |`).join('\n')
   const sourceText = '# Source\n\n[相对链接](中文%20空格.md)\n\n[子目录](child/child.md)\n\n[标题](中文%20空格.md#目标标题)\n\n' +
     `[行号](lines.md:147)\n\n[文件行号](${pathToFileURL(lineFile).href}:147)\n\n[源码行号](large.md:147)\n\n[越界行号](lines.md:9999)\n\n` +
     `[File URL](${pathToFileURL(target).href})\n\n[网页](https://example.com)\n\n[缺失](missing.md)\n\n[文内](#source)\n\n[HTML锚点](anchors.md#1-先区分五类对象)\n\n` +
@@ -189,7 +231,9 @@ async function runtimeChecks() {
     '<a id="deep-block">DEEP_BLOCK_TARGET</a>\n</div>\n'
   writeFileSync(source, sourceText); writeFileSync(target, targetText); writeFileSync(childFile, '# Child\n\n[上级](../source.md)\n')
   writeFileSync(lineFile, lineText); writeFileSync(largeFile, largeText); writeFileSync(anchorFile, anchorText)
-  const before = new Map([source, target, childFile, lineFile, largeFile, anchorFile].map(file => [file, { bytes: readFileSync(file), mtime: statSync(file).mtimeMs }]))
+  writeFileSync(editingFile, '# Edit\n\n' + tableSource + '\n\n' + nestedTableSource + '\n')
+  writeFileSync(join(notes, 'pixel.png'), Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFAAH/q842iQAAAABJRU5ErkJggg==', 'base64'))
+  const before = new Map([source, target, childFile, lineFile, largeFile, anchorFile, editingFile].map(file => [file, { bytes: readFileSync(file), mtime: statSync(file).mtimeMs }]))
   const anchorBundle = await build({ entryPoints: [join(ROOT, 'src/renderer/editor/document-anchor.ts')], bundle: true, platform: 'browser', format: 'iife', globalName: 'anchorChecks', write: false })
   const themeBundle = await build({ entryPoints: [join(ROOT, 'src/renderer/themes/theme-manager.ts')], bundle: true, platform: 'browser', format: 'iife', globalName: 'themeChecks', write: false })
   const events = join(WORK, 'events.jsonl'), harness = join(WORK, 'main.cjs')
@@ -372,6 +416,59 @@ async function runtimeChecks() {
           }
         })
       }
+      await evaluate(`window.electronAPI.openExternal(${JSON.stringify(editingFile)})`)
+      await wait(`document.title==='table-editing.md' && document.querySelectorAll('.cm-md-table-widget').length===2`, `${theme}: editing fixture loaded`)
+      for (const [entry, rawSource] of [['编辑入口', tableSource], ['嵌套编辑入口', nestedTableSource]]) {
+        const point = await evaluate(`(() => {
+          const cell = [...document.querySelectorAll('.cm-md-table-widget td')].find(e => e.textContent === ${JSON.stringify(entry)});
+          cell.scrollIntoView({block:'center',behavior:'instant'});
+          const r = cell.getBoundingClientRect(); return {x:r.x+r.width/2,y:r.y+r.height/2};
+        })()`)
+        for (const type of ['mousePressed', 'mouseReleased']) await send('Input.dispatchMouseEvent', { type, ...point, button: 'left', clickCount: 1 })
+        await wait(`!!document.querySelector('#editor .cm-md-table')`, `${theme}: ${entry} enters source editing`)
+        const editing = await evaluate(`(() => {
+          const rows = [...document.querySelectorAll('#editor .cm-md-table')];
+          return {text:rows.map(e=>e.textContent).join('\\n'), links:rows.flatMap(e=>[...e.querySelectorAll('a[href],[data-href],.cm-md-link')]).length,
+            widgets:rows.flatMap(e=>[...e.querySelectorAll('.cm-md-image,.cm-md-html,.cm-md-math')]).length,
+            rendered:document.querySelectorAll('.cm-md-table-widget').length};
+        })()`)
+        check(`${theme}: ${entry}完整显示表格链接源码`, () => assert.equal(editing.text, rawSource))
+        check(`${theme}: ${entry}源码没有导航入口，其他表格继续渲染`, () => {
+          assert.equal(editing.links, 0); assert.equal(editing.widgets, 0); assert.equal(editing.rendered, 1)
+        })
+        const eventsBefore = readFileSync(events, 'utf8')
+        const rawLinkPoint = await evaluate(`(() => {
+          const row = [...document.querySelectorAll('#editor .cm-md-table')].find(e=>e.textContent.includes('https://example.com'));
+          const walker = document.createTreeWalker(row, NodeFilter.SHOW_TEXT);
+          let node; while(node=walker.nextNode()) {
+            const at=node.textContent.indexOf('https://'); if(at<0)continue;
+            const range=document.createRange(); range.setStart(node,at); range.setEnd(node,at+5);
+            row.scrollIntoView({block:'center',behavior:'instant'});
+            const r=range.getBoundingClientRect(); return {x:r.x+r.width/2,y:r.y+r.height/2};
+          }
+        })()`)
+        assert(rawLinkPoint, '未找到可点击的链接地址源码')
+        for (const type of ['mousePressed', 'mouseReleased']) await send('Input.dispatchMouseEvent', { type, ...rawLinkPoint, button: 'left', clickCount: 1 })
+        await sleep(150)
+        const selection = await evaluate(`(() => {
+          const node=window.getSelection()?.anchorNode;
+          const element=node?.nodeType===Node.ELEMENT_NODE ? node : node?.parentElement;
+          return {title:document.title, inTable:!!element?.closest('.cm-md-table')};
+        })()`)
+        check(`${theme}: ${entry}点击源码地址只放光标`, () => {
+          assert.equal(readFileSync(events, 'utf8'), eventsBefore)
+          assert.equal(selection.title, 'table-editing.md'); assert.equal(selection.inTable, true)
+        })
+        const headingPoint = await evaluate(`(() => {
+          const heading=[...document.querySelectorAll('#editor .cm-line')].find(e=>e.textContent==='Edit');
+          heading.scrollIntoView({block:'center',behavior:'instant'});
+          const r=heading.getBoundingClientRect(); return {x:r.x+10,y:r.y+r.height/2};
+        })()`)
+        for (const type of ['mousePressed', 'mouseReleased']) await send('Input.dispatchMouseEvent', { type, ...headingPoint, button: 'left', clickCount: 1 })
+        await wait(`document.querySelectorAll('.cm-md-table-widget').length===2 && !document.querySelector('#editor .cm-md-table')`, `${theme}: ${entry} returns to rendering`)
+        check(`${theme}: ${entry}点走恢复表格链接`, () => {})
+      }
+      await openSource()
       for (const [label, selector] of [['表格链接', '.cm-md-table-widget'], ['HTML块链接', '.cm-md-html a[href]']]) {
         await openSource(); await click(label)
         await wait(`document.title==='中文 空格.md'`, `${theme}: plain click ${label}`)

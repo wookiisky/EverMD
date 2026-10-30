@@ -160,7 +160,7 @@ function inRange(range: Range | null, pos: number): boolean {
 }
 
 /**
- * 遍历语法树，跳过属性区。
+ * 遍历语法树，跳过属性区及正在编辑的表格内链接。
  *
  * 属性区里是 YAML，不是 markdown：`- `、`---`、`**`、`#` 在那里都只是普通字符。
  * 解析器不认 YAML，会把它们解析成列表项、分隔线、加粗，所以在这里统一挡掉，
@@ -176,6 +176,8 @@ function iterateContent(
   syntaxTree(state).iterate({
     enter: (node) => {
       if (front && node.name !== 'Document' && inRange(front, node.from)) return false
+      // 表格已退回源码时，链接及其内部语法都保留原文，不再叠加行内渲染。
+      if (node.name === 'Link' && isEditingTableLink(state, node.node)) return false
       return enter(node)
     },
   })
@@ -363,6 +365,17 @@ function isBlockActive(state: EditorState, from: number, to: number): boolean {
   return sel.from >= from && sel.to <= to
 }
 
+/** 节点是否位于正在编辑的表格链接内，供语法树与独立扫描共用。 */
+function isEditingTableLink(state: EditorState, node: SyntaxNode): boolean {
+  if (exportingCleanly(state)) return false
+  let insideLink = false
+  for (let ancestor: SyntaxNode | null = node; ancestor; ancestor = ancestor.parent) {
+    if (ancestor.name === 'Link') insideLink = true
+    if (ancestor.name === 'Table') return insideLink && isBlockActive(state, ancestor.from, ancestor.to)
+  }
+  return false
+}
+
 // ─── 公式 ────────────────────────────────────────────────────────────────────
 
 /**
@@ -442,6 +455,7 @@ function collectMath(state: EditorState, ranges: DecorationRange[]): void {
   // 排除区：属性区、代码块、行内代码、行内 HTML。
   // 这些地方里的 `$x$` 不该渲染成公式——代码就是代码，Obsidian 也是这么处理的。
   for (const range of previewAnalysis(state.doc, syntaxTree(state)).math) {
+    if (isEditingTableLink(state, syntaxTree(state).resolveInner(range.from, 1))) continue
     // 块公式：光标落进去就退回源码，就地改（行内公式的判据见上，保持不露）
     if (isActiveLine(state, range.from) || (range.block && isBlockActive(state, range.from, range.to))) {
       const delim = range.block ? 2 : 1
@@ -474,7 +488,7 @@ function collectHighlight(state: EditorState, ranges: DecorationRange[], exclude
   while ((match = HIGHLIGHT_RE.exec(text)) !== null) {
     const start = match.index
     const end = start + match[0].length
-    if (inExcluded(start)) continue
+    if (inExcluded(start) || isEditingTableLink(state, syntaxTree(state).resolveInner(start, 1))) continue
     const active = isActiveLine(state, start)
     // 藏定界符，给中间那段加底色；光标在这一行时定界符露出来，但仍要能认出来
     const delimiter = (from: number, to: number) =>
@@ -846,8 +860,8 @@ function collectTables(state: EditorState, ranges: DecorationRange[], front: Ran
 /**
  * 链接画成链接。
  *
- * `[文字](地址)` 里，地址在非编辑行藏起来：正文里只该看到链接文字（Obsidian 就是这样）。
- * 要改地址，把光标点进这一行，源码就回来了。
+ * `[文字](地址)` 在正文里只显示链接文字。表格进入源码编辑后，
+ * 由 iterateContent 保留链接的完整原文，点击只定位光标。
  *
  * 文字上带 `data-href`，而不是把整段换成 `<a>` widget：换成 widget 的话，链接文字里的
  * 加粗、行内代码就全没了。点击行为在 editor.ts 里，它认 `data-href`。
@@ -910,6 +924,7 @@ function collectFootnotes(state: EditorState, ranges: DecorationRange[], front: 
   // 引用：整段 `[^note]` 换成上标数字
   for (const { from, to, label } of analysis.footnoteReferences) {
     if (front && inRange(front, from)) continue
+    if (isEditingTableLink(state, syntaxTree(state).resolveInner(from, 1))) continue
     if (definitions.has(label) === false && numbers.has(label) === false) continue
     if (isActiveLine(state, from)) continue
     ranges.push({
