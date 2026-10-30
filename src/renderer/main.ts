@@ -1753,10 +1753,13 @@ async function init(): Promise<void> {
     document.body.classList.add('platform-win')
     document.getElementById('app-menu-btn')?.removeAttribute('hidden')
   }
-  const [language, manager] = await Promise.all([api.getLanguage(), api.getFileManagerName()])
+  // 三项配置互不依赖；仍在主题应用完成后创建编辑器，避免首屏主题变化。
+  const [language, manager, themes] = await Promise.all([
+    api.getLanguage(), api.getFileManagerName(), api.listThemeDefinitions()
+  ])
   fileManagerName = manager
   setUiLanguage(language)
-  setThemeDefinitions(await api.listThemeDefinitions())
+  setThemeDefinitions(themes)
   const savedTheme = loadSavedTheme()
   if (savedTheme.startsWith('custom:')) {
     // 旧选择按文件身份恢复，避免同内容 CSS 或已编辑的迁移主题互相冒用。

@@ -15,6 +15,12 @@
 const { app } = require('electron')
 const { join } = require('path')
 
+// 可选隔离验收的主题、最近文件和恢复副本，不触碰用户的 home。
+if (process.env.EVERMD_STARTUP_HOME) {
+  require('node:fs').mkdirSync(process.env.EVERMD_STARTUP_HOME, { recursive: true })
+  app.setPath('home', process.env.EVERMD_STARTUP_HOME)
+}
+
 const FAR_AWAY = -100000
 
 app.on('browser-window-created', (_event, win) => {
@@ -29,4 +35,7 @@ app.on('browser-window-created', (_event, win) => {
   }
 })
 
-require(join(__dirname, '..', 'dist', 'main', 'index.js'))
+// 启动基准可读取保留的构建，普通验收仍使用当前 dist。
+require(process.env.EVERMD_STARTUP_DIST
+  ? join(process.env.EVERMD_STARTUP_DIST, 'main', 'index.js')
+  : join(__dirname, '..', 'dist', 'main', 'index.js'))

@@ -1,7 +1,8 @@
 import { app, BrowserWindow, ipcMain, dialog, Menu, shell, session, clipboard, screen, nativeTheme } from 'electron'
 import { execFile } from 'child_process'
 import { randomUUID } from 'crypto'
-import { autoUpdater } from 'electron-updater'
+import type { AppUpdater } from 'electron-updater'
+import { loadAutoUpdater } from './auto-updater-loader'
 import { join, basename, dirname, extname, isAbsolute, resolve, relative, sep } from 'path'
 import { fileURLToPath, pathToFileURL } from 'url'
 import { appendFile, readFile, writeFile, readdir, copyFile, mkdir, stat } from 'fs/promises'
@@ -2328,8 +2329,7 @@ function buildMenu(): void {
         ...(latestVersion ? [{
           label: `${labels.updateAvailable} v${latestVersion}`,
           click: () => {
-            updateDownloadRequested = true
-            void autoUpdater.downloadUpdate()
+            void downloadUpdate()
           }
         }] : []),
         { type: 'separator' },
@@ -2478,6 +2478,8 @@ async function checkForUpdates(manual = false): Promise<void> {
   if (!manual && Date.now() - lastUpdateCheckAt() < UPDATE_CHECK_INTERVAL_MS) return
   manualUpdateCheck = manual
   try {
+    const autoUpdater = await loadAutoUpdater(configureAutoUpdater)
+    if (!autoUpdater) return
     await autoUpdater.checkForUpdates()
     markUpdateChecked()
   } catch (error) {
@@ -2496,9 +2498,8 @@ async function checkForUpdates(manual = false): Promise<void> {
   }
 }
 
-function setupAutoUpdater(): void {
-  if (!app.isPackaged || !appConfig.updatesEnabled) return
-
+// 更新器加载完成后只配置一次，检查和下载都等待这一步完成。
+function configureAutoUpdater(autoUpdater: AppUpdater): void {
   autoUpdater.autoDownload = false
   autoUpdater.autoInstallOnAppQuit = true
 
@@ -2556,14 +2557,19 @@ function setupAutoUpdater(): void {
   dailyTick.unref()
 }
 
-ipcMain.handle('download-update', async () => {
-  if (!appConfig.updatesEnabled) return
+// 菜单和渲染层共用已初始化的更新器，禁用时不加载依赖。
+async function downloadUpdate(): Promise<void> {
+  const autoUpdater = await loadAutoUpdater(configureAutoUpdater)
+  if (!autoUpdater) return
   updateDownloadRequested = true
   await autoUpdater.downloadUpdate()
-})
+}
 
-ipcMain.handle('install-update', () => {
-  if (!appConfig.updatesEnabled) return
+ipcMain.handle('download-update', downloadUpdate)
+
+ipcMain.handle('install-update', async () => {
+  const autoUpdater = await loadAutoUpdater(configureAutoUpdater)
+  if (!autoUpdater) return
   autoUpdater.quitAndInstall(false, true)
 })
 
@@ -2635,7 +2641,9 @@ app.whenReady().then(async () => {
     }
   }
 
-  setupAutoUpdater()
+  void loadAutoUpdater(configureAutoUpdater).catch((error) => {
+    console.error('更新器初始化失败', error)
+  })
   void openChangelogOnceForVersion()
 
   app.on('activate', () => {

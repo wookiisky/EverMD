@@ -127,3 +127,53 @@ npm run verify:opening-performance -- --profile --output /tmp/evermd-opening-pro
 - `verify:document-file-content`：实际序列化字节、混合行尾、编辑/撤销、外部重载、标签恢复及前置内容变化。
 
 本节实际通过四套类型检查、桌面构建、Markdown 100 个样本字节对照、统计 20 个固定及 3,000 个随机差分、空行/目录模型/几何测试，以及真实窗口侧栏 51 项、源码模式 198 项、文档生命周期 22 项和启动验收。前后打开基准还逐次核对正文长度与首尾、可编辑状态、干净状态，以及临时文件的完整字节和 mtime。未验证 Windows/Linux 运行时和显示器呈现延迟。
+
+## macOS 启动的后续优化
+
+2026-10-30，同机 macOS arm64、Node 24.20.0、Electron 44.3.0。优化前的构建基于 `c19771d`。本次只调整启动依赖和独立配置请求，没有改变窗口显示、主题迁移、公式渲染或文档交付顺序。
+
+- 更新器改为通过 `loadAutoUpdater` 按需加载，调用方等待配置和事件注册完成后再使用实例。开发模式及 `updatesEnabled: false` 时不加载模块；多个入口共享同一次加载与初始化，失败向调用方传播。当前禁用配置下，构建器可移除更新器及其依赖，主入口从 954,953 字节降至 387,233 字节，减少约 59%。
+- 语言、文件管理器名称和主题列表改为并行请求，仍在应用保存的主题后创建编辑器。回归脚本挂起前两个响应，确认主题请求已经发出；优化前的串行实现会在这一步失败。
+
+### 测量方法与边界
+
+新增 `verify:startup-performance`，真实窗口继续通过 `offscreen-window.cjs` 隐藏，不抢焦点。测试同时隔离 `home` 与 `userData`，避免主题、最近文件和恢复副本落入用户配置。每组区分每次新建配置和复用配置，两份构建各预热一次、采样七次，按 before/after、after/before 交替启动；每组报告中位数、范围和全部样本。
+
+计时从父进程 `spawn` 到调试协议观察到编辑器可编辑，以及启动正文完整并读取同步布局。公式文档还等待两处公式完成渲染。它包含调试连接和轮询开销，不代表显示器首帧，也不是清空系统磁盘缓存后的冷启动。另记离屏壳同步加载主入口的耗时，包含模块解析与同步初始化，不包含 `app.whenReady()` 后的异步任务。
+
+计时结束后，再通过真实输入和快捷键撤销核对编辑器能处理输入，检查正文恢复、没有保存请求，以及普通文档的磁盘字节和 mtime 未变。普通文档包含 CRLF 与 frontmatter；无文件参数的场景显示产品欢迎文档。
+
+```sh
+# 先保留优化前完整 dist，再构建当前版本；比较模式交替运行两份构建。
+npm run build
+npm run verify:startup-performance -- --compare-dist /tmp/evermd-startup-before.R3lhe2/dist --output /tmp/evermd-startup-paired.json
+# 读取其他保留构建必须显式标记，不能将旧产物报告为当前源码。
+npm run verify:startup-performance -- --baseline --dist /tmp/evermd-startup-before.R3lhe2/dist --output /tmp/startup-baseline.json
+npm run verify:startup-performance -- --verify-concurrent
+npm run verify:auto-updater-loader
+```
+
+### 本机结果
+
+前后交替采样的中位数如下，单位 ms。“正文就绪”包含前述观察开销；较小差值仍可能受运行环境影响。
+
+| 场景 | 配置 | 正文就绪，优化前 | 正文就绪，优化后 | 同步加载主入口，优化前 → 优化后 |
+| --- | --- | ---: | ---: | ---: |
+| 欢迎文档 | 新建 | 410.2 | 395.0 | 16.7 → 7.4 |
+| 欢迎文档 | 复用 | 382.2 | 372.6 | 16.2 → 7.5 |
+| 普通文档 | 新建 | 394.5 | 391.8 | 16.0 → 7.0 |
+| 普通文档 | 复用 | 400.0 | 383.2 | 16.5 → 7.2 |
+| 公式文档 | 新建 | 410.9 | 393.4 | 16.1 → 7.2 |
+| 公式文档 | 复用 | 404.3 | 401.1 | 16.6 → 7.1 |
+
+本轮可重复观察到主入口的同步成本减少约 9 ms。六组正文就绪中位数减少约 3–18 ms，约占原观察值的 1–4%；这是小幅收益，不能据此承诺明显的体感变化。
+
+实施时还分别采集过优化前和仅调整更新器的独立批次。两批正文中位数分别为 357–434 ms、398–403 ms，时段间波动较大，不能直接据此归因。上表改用相邻交替采样，完整数据保留在 `/tmp/evermd-startup-paired.json`；前两批为 `/tmp/evermd-startup-before.json`、`/tmp/evermd-startup-updater.json`，不删除不利样本。
+
+本地 `release/mac-arm64/EverMD.app` 也完成相同六组、各预热一次和七次采样。直接启动原生可执行文件，在主模块入口暂停后接入同一隔离离屏壳，再恢复原入口；断言实际为打包模式，并确认没有重复执行主模块。正文就绪中位数为 434–486 ms，其中含约 144–151 ms 的调试器准备成本，两者不能简单相减得到正常启动时间，也不能与上表的无入口暂停结果混比。原始数据为 `/tmp/evermd-startup-packaged-after.json`。原生包测量证明本地包的正文、公式和输入撤销流程正常，不单独用它声明提速比例。
+
+这次没有修改 KaTeX 的同步渲染，也没有提前展示尚未应用主题的编辑器。未来真正启用更新后的服务器通信、下载及安装，以及 Windows/Linux 运行时均未验证。当前本地包采用临时签名，不代表正式签名、公证及首次安装检查的耗时；没有替换 `/Applications/EverMD.app`。
+
+本轮还通过 main、preload、renderer、web 四套类型检查，桌面构建、更新器加载器的开发/禁用/并发/错误用例、100 个 Markdown 样本字节对照、真实启动目录阻塞测试，以及 `verify:features -- --skip-selection-screenshots` 的 349 项功能检查。功能检查显式跳过隐藏窗口的选区像素截图，不把它算作已验证。现有 Electron 回归也设置 `EVERMD_STARTUP_HOME` 隔离主题和最近文件，验收进程均已结束。
+
+收尾期间，工作区另有导航修改，`dist` 也被重新构建；这些后续修改未纳入上述性能与回归结论。本轮验证的应用包单独保留为 `release/startup-optimized-arm64/EverMD.app`，临时签名完整性检查通过，其 `Contents/Resources/app.asar` 的 SHA-256 为 `2b3180929a2e1e79b5bcabae0fbf1f4951ac85193f1a13fae42e162795687ba2`，便于区分构建快照。

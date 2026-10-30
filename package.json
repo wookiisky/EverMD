@@ -62,6 +62,8 @@
     "verify:file-panel-model": "node scripts/verify-file-panel-model.mjs",
     "verify:file-panel-view": "node scripts/verify-file-panel-window.mjs && node scripts/verify-file-panel-view.mjs",
     "verify:startup": "node scripts/verify-startup.mjs",
+    "verify:startup-performance": "node scripts/verify-startup-performance.mjs",
+    "verify:auto-updater-loader": "node scripts/verify-auto-updater-loader.mjs",
     "verify:editor-performance": "node scripts/verify-editor-performance.mjs",
     "verify:performance-ui": "node scripts/verify-performance-ui.mjs",
     "verify:opening-performance": "node scripts/verify-opening-performance.mjs"
