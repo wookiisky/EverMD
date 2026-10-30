@@ -1,5 +1,6 @@
 {
   "zh": {
+    "copyFileName": "复制文件名",
     "empty": "这个文件夹是空的",
     "back": "返回",
     "parent": "返回上级目录",
@@ -7,6 +8,7 @@
     "collapse": "收起 {name}"
   },
   "en": {
+    "copyFileName": "Copy file name",
     "empty": "This folder is empty",
     "back": "Back",
     "parent": "Go to parent directory",

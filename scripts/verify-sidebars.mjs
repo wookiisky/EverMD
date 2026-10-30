@@ -13,6 +13,7 @@ import { stopVerifyApp, verifyWorkdir } from './verify-workdir.mjs'
 assertBuildFresh()
 const root = fileURLToPath(new URL('..', import.meta.url))
 const require = createRequire(import.meta.url)
+const filePanelLabels = require('../src/shared/file-panel-labels.json')
 const { dir, udd } = verifyWorkdir('sidebars')
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms))
 const preference = 'colamd-sidebars'
@@ -21,7 +22,7 @@ const view = "document.querySelector('#editor .cm-content')?.cmTile?.root?.view"
 const fixture = '# 侧栏验收\n\n```sh\n# 不该进入大纲\n```\n\n' +
   Array.from({ length: 30 }, (_, i) => `## 章节 ${i + 1}\n\n${'正文内容。'.repeat(25)}\n\n`).join('')
 const second = '# 第二个文档\r\n\r\n保留原始行尾。\r\n'
-const files = [join(dir, '侧栏.md'), join(dir, '第二个文档.md')]
+const files = [join(dir, '侧栏.md'), join(dir, '第二个 文档.v2.markdown')]
 writeFileSync(files[0], fixture)
 writeFileSync(files[1], second)
 const original = files.map(file => ({ bytes: readFileSync(file), mtime: statSync(file).mtimeMs }))
@@ -254,6 +255,61 @@ try {
   await waitFor("document.querySelectorAll('#right-sidebar .outline-list button').length === 31", '大纲缺少真实标题或包含代码块注释')
   check('文件与大纲同时可读', await evaluate(renderer,
     "document.querySelectorAll('#left-sidebar .file-list button').length >= 2 && !document.querySelector('#left-sidebar .file-list').hidden && !document.querySelector('#right-sidebar .outline-list').hidden"))
+
+  // 保留实际原生 Menu 实例，只拦截弹出，避免离屏测试把菜单显示到用户桌面。
+  await evaluate(main, `(() => {
+    const { Menu } = require('electron')
+    globalThis.originalEntryPopup = Menu.prototype.popup
+    Menu.prototype.popup = function () { globalThis.entryMenu = this }
+  })()`)
+  try {
+    for (const language of ['zh', 'en']) {
+      await evaluate(main, `(() => {
+        const { Menu, BrowserWindow } = require('electron')
+        const flatten = menu => menu.items.flatMap(item => [item, ...(item.submenu ? flatten(item.submenu) : [])])
+        const item = flatten(Menu.getApplicationMenu()).find(item => item.label === ${JSON.stringify(language === 'zh' ? '中文' : 'English')})
+        item.click(item, BrowserWindow.getAllWindows()[0])
+      })()`)
+      await waitFor(`window.electronAPI.getLanguage().then(language => language === '${language}')`, '界面语言未切换')
+      for (const theme of ['light', 'dark']) {
+        await clickMenu(`theme-${theme}`)
+        await waitFor(`document.body.classList.contains('theme-${theme}')`, '主题未切换')
+        for (const file of files) {
+          await evaluate(main, 'globalThis.entryMenu = null')
+          await evaluate(renderer, `(() => {
+            const button = [...document.querySelectorAll('#left-sidebar .file-list button')].find(button => button.dataset.path === ${JSON.stringify(file)})
+            button.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }))
+          })()`)
+          await waitFor('!!globalThis.entryMenu', '文件右键未创建原生菜单', main)
+          check(`${language}/${theme} 文件菜单包含复制文件名`, await evaluate(main,
+            "!!globalThis.entryMenu.getMenuItemById('copy-file-name')"))
+          check(`${language}/${theme} 文件名菜单使用当前语言配置`, await evaluate(main,
+            `globalThis.entryMenu.getMenuItemById('copy-file-name').label === ${JSON.stringify(filePanelLabels[language].copyFileName)}`))
+          await evaluate(main, `(() => {
+            const item = globalThis.entryMenu.getMenuItemById('copy-file-name')
+            item.click(item, require('electron').BrowserWindow.getAllWindows()[0])
+          })()`)
+          await waitFor(`Promise.resolve(require('electron').clipboard.readText()).then(text => text === ${JSON.stringify(file.split('/').pop())})`, '剪贴板未包含完整文件名', main)
+          check(`${language}/${theme} 复制所点文件的完整名称，保留扩展名`, true)
+          // 新选项位于复制路径之前，原路径动作仍复制完整路径。
+          await evaluate(main, `(() => {
+            const items = globalThis.entryMenu.items
+            const item = items[items.findIndex(item => item.id === 'copy-file-name') + 1]
+            item.click(item, require('electron').BrowserWindow.getAllWindows()[0])
+          })()`)
+          await waitFor(`Promise.resolve(require('electron').clipboard.readText()).then(text => text === ${JSON.stringify(file)})`, '原复制路径动作被改变', main)
+          check(`${language}/${theme} 原复制路径保留完整路径`, true)
+        }
+        await evaluate(renderer, `window.electronAPI.showEntryContextMenu(${JSON.stringify(dir)}, 'directory')`)
+        check(`${language}/${theme} 文件夹菜单不增加复制文件名`, await evaluate(main,
+          "!globalThis.entryMenu.getMenuItemById('copy-file-name')"))
+      }
+    }
+    check('右键复制其他文件不切换当前文档', await evaluate(renderer,
+      `${view}.state.doc.toString() === ${JSON.stringify(fixture)}`))
+  } finally {
+    await evaluate(main, "require('electron').Menu.prototype.popup = globalThis.originalEntryPopup")
+  }
   await evaluate(renderer, "(() => { const button = document.querySelector('#left-sidebar .file-list button'); button.dataset.focusProbe = 'files'; button.focus() })()")
   await setVisible('right', false)
   await setVisible('right', true)

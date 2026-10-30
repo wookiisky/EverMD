@@ -9,6 +9,7 @@ import { watch, FSWatcher, existsSync, readFileSync, writeFileSync, statSync } f
 import { resolveMarkdownLink } from './markdown-link'
 import type { SidebarPreferences } from '../shared/sidebar-config'
 import sidebarLabels from '../shared/sidebar-labels.json'
+import filePanelLabels from '../shared/file-panel-labels.json'
 import viewLabels from '../shared/view-labels.json'
 import type { NavigationFileResult, NavigationMenuState } from '../shared/navigation-config'
 import navigationLabels from '../shared/navigation-labels.json'
@@ -951,6 +952,7 @@ ipcMain.handle('entry-context-menu', (event, targetPath: unknown, kind: unknown)
   const win = getWinFromEvent(event)
   if (!win || typeof targetPath !== 'string' || targetPath.length === 0) return
   const zh = getPreferredLanguage() === 'zh'
+  const labels = filePanelLabels[zh ? 'zh' : 'en']
   const items: Electron.MenuItemConstructorOptions[] = []
   if (kind !== 'directory') {
     // First item: opening a document in its own tab is the reason this menu is
@@ -965,6 +967,7 @@ ipcMain.handle('entry-context-menu', (event, targetPath: unknown, kind: unknown)
       }
     })
     items.push({ type: 'separator' })
+    items.push({ id: 'copy-file-name', label: labels.copyFileName, click: () => copyToClipboard(basename(targetPath)) })
   }
   items.push({ label: zh ? '复制路径' : 'Copy path', click: () => copyToClipboard(targetPath) })
   if (kind !== 'directory') {
