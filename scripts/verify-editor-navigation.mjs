@@ -23,7 +23,13 @@ let focusCalls = 0, scrollEffects = 0
 Object.assign(source, { value: text, selectionStart: 0, selectionEnd: 0, selectionDirection: 'forward', scrollTop: 0, clientHeight: 600,
   focus() { focusCalls++ }, setSelectionRange(start, end, direction) { this.selectionStart = start; this.selectionEnd = end; this.selectionDirection = direction; } })
 const host = globalThis.navigationHost = { listener: null, view: {
-  state: EditorState.create({ doc: text }), scrollDOM: { clientHeight: 600, getBoundingClientRect: () => ({top: 0}) },
+  state: EditorState.create({ doc: text }), scrollDOM: { scrollTop: 0, clientHeight: 600, getBoundingClientRect: () => ({top: 0}) },
+  get documentTop() { return -this.scrollDOM.scrollTop },
+  lineBlockAtHeight(top) { return this.lineBlockAt(Math.max(0, Math.min(top, this.state.doc.length))) },
+  lineBlockAt(position) { const line = this.state.doc.lineAt(position); return { from: line.from, top: line.from } },
+  requestMeasure(request) { const value = request.read(); request.write?.(value) },
+  scrollSnapshot() { return undefined },
+  viewportLineBlocks: [],
   coordsAtPos: () => ({ top: 100 }), focus() { focusCalls++ },
   dispatch(spec) { const transaction = this.state.update(spec); const startState = this.state; this.state = transaction.state;
     if (spec.effects) scrollEffects++
@@ -159,6 +165,70 @@ for (const mode of [false, true]) {
   }
 }
 console.log('通过：两种模式前进与后退重用空白标签后，仍恢复目标文件原位置')
+
+// 阅读滚动不移动光标；跨文件回退仍应恢复离开时的阅读视口。
+sourceMode = true
+identity = { filePath: '/reading.md', tabId: 'reading' }
+source.value = text; source.setSelectionRange(0, 0, 'forward'); source.scrollTop = 900
+const readingNav = new EditorNavigation({ source, getIdentity: () => identity, isSourceMode: () => true,
+  isProgrammatic: () => false, open: async target => {
+    const sameFile = identity.filePath === target.filePath
+    identity = { filePath: target.filePath, tabId: target.tabId }
+    if (!sameFile) { source.value = text; source.setSelectionRange(0, 0, 'forward'); source.scrollTop = 0 }
+    return 'ok'
+  } })
+readingNav.initialize(); readingNav.beforeSwitch()
+identity = { filePath: '/skill.md', tabId: 'skill' }; source.scrollTop = 0
+readingNav.afterSwitch(); await readingNav.navigate(-1)
+assert.equal(identity.filePath, '/reading.md', '一次回退返回阅读原文')
+assert.equal(source.selectionStart, 0, '恢复阅读位置不移动旧光标')
+assert.equal(source.scrollTop, 900, '恢复阅读视口，而不是滚到仍留在文首的光标')
+source.setSelectionRange(4000, 4000, 'forward'); source.dispatchEvent(new Event('select')); await settle()
+source.value = '新增行\n' + text
+source.setSelectionRange(4004, 4004, 'forward'); source.dispatchEvent(new Event('input'))
+source.scrollTop = 904
+await readingNav.navigate(-1)
+assert.equal(source.selectionStart, 4, '历史选区跟随文首输入映射')
+assert.equal(source.scrollTop, 904, '历史阅读视口也跟随文首输入映射')
+readingNav.dispose()
+sourceMode = false
+source.value = text
+host.view.state = EditorState.create({ doc: text })
+host.view.scrollDOM.scrollTop = 900
+identity = { filePath: '/render-reading.md', tabId: 'render-reading' }
+const renderedReadingNav = new EditorNavigation({ source, getIdentity: () => identity, isSourceMode: () => false,
+  isProgrammatic: () => false, open: async target => {
+    identity = { filePath: target.filePath, tabId: target.tabId }
+    host.view.scrollDOM.scrollTop = 0
+    return 'ok'
+  } })
+renderedReadingNav.initialize(); renderedReadingNav.beforeSwitch()
+identity = { filePath: '/render-skill.md', tabId: 'render-skill' }; host.view.scrollDOM.scrollTop = 0
+renderedReadingNav.afterSwitch(); await renderedReadingNav.navigate(-1)
+assert.equal(host.view.scrollDOM.scrollTop, 900, '渲染模式独立恢复阅读视口')
+assert.equal(host.view.state.selection.main.head, 0, '渲染模式也保留屏外的旧光标')
+const immediateMeasure = host.view.requestMeasure
+const pendingMeasures = []
+host.view.requestMeasure = request => { pendingMeasures.push(request) }
+await renderedReadingNav.navigate(1); await renderedReadingNav.navigate(-1)
+await renderedReadingNav.navigate(1); await renderedReadingNav.navigate(-1)
+await renderedReadingNav.navigate(-1)
+for (const request of pendingMeasures) request.write(request.read())
+await Promise.resolve()
+assert.equal(host.view.scrollDOM.scrollTop, 900, '布局尚未完成时连续回放，也不能用临时视口覆盖历史')
+// 回放测量前允许继续编辑，旧文档的恢复不能覆盖新的阅读位置。
+pendingMeasures.length = 0
+await renderedReadingNav.navigate(1); await renderedReadingNav.navigate(-1)
+host.view.dispatch({ changes: { from: 0, insert: '新增行\n' } })
+host.view.scrollDOM.scrollTop = 450
+await renderedReadingNav.navigate(1); await renderedReadingNav.navigate(-1)
+for (const request of pendingMeasures) request.write(request.read())
+await Promise.resolve()
+assert.equal(host.view.scrollDOM.scrollTop, 450, '恢复测量前编辑后，离开时保存实际视口，不复用旧锚点')
+host.view.requestMeasure = immediateMeasure
+renderedReadingNav.dispose()
+host.view.scrollDOM.scrollTop = 0
+console.log('通过：两种模式独立恢复阅读视口，编辑同时映射历史选区与视口')
 
 // 重开时磁盘内容变短，固定目标仍要读取按新正文夹限后的行列。
 for (const mode of [false, true]) {

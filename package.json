@@ -52,6 +52,7 @@
     "verify:sidebars": "node scripts/verify-sidebars.mjs",
     "verify:navigation-history": "node scripts/verify-navigation-history.mjs",
     "verify:navigation-ui": "node scripts/verify-navigation-ui.mjs",
+    "verify:link-history-ui": "node scripts/verify-link-history-ui.mjs",
     "verify:editor-navigation": "node scripts/verify-editor-navigation.mjs",
     "verify:preview-analysis": "node scripts/verify-preview-analysis.mjs",
     "verify:document-install": "node scripts/verify-document-install.mjs",

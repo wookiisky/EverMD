@@ -25,6 +25,7 @@ const check = (name, fn) => { fn(); passed++; console.log(`PASS ${name}`) }
 const MOD = process.platform === 'darwin' ? 4 : 2
 
 async function unitChecks() {
+  await import('./verify-link-navigation.mjs')
   for (const [name, entry] of [['paths', 'src/main/markdown-link.ts'], ['headings', 'src/renderer/editor/heading-anchor.ts']]) {
     await build({ entryPoints: [join(ROOT, entry)], bundle: true, platform: 'node', format: 'cjs', outfile: join(WORK, `${name}.cjs`) })
   }
@@ -306,21 +307,20 @@ async function runtimeChecks() {
       await sleep(150)
     }
     const click = async (label, modifiers = 0) => {
-      // Links outside CM6's viewport have no DOM yet; reveal the link before clicking it.
-      await evaluate(`document.querySelector('#editor .cm-scroller').scrollTop=0`)
-      await sleep(100)
+      // 按源码位置滚到目标块，不移动光标；等待惰性排版完成后再点击可见链接。
+      const from = await evaluate(`document.querySelector('#editor .cm-content').cmTile.root.view.state.doc.toString().indexOf(${JSON.stringify(label)})`)
+      assert(from >= 0, `Link missing from source: ${label}`)
       let point
-      for (let i = 0; i < 40 && !point; i++) {
+      for (let i = 0; i < 100 && !point; i++) {
         point = await evaluate(`(() => {
+        const v=document.querySelector('#editor .cm-content').cmTile.root.view, bounds=v.scrollDOM.getBoundingClientRect();
         const a=[...document.querySelectorAll('#editor [data-href], #editor a[href]')].find(a=>a.textContent===${JSON.stringify(label)});
-        if(!a)return null; a.scrollIntoView({block:'center',behavior:'instant'});
-        const r=[...a.getClientRects()].find(r=>r.width>2&&r.height>2);
+        if(!a){v.scrollDOM.scrollTop+=v.lineBlockAt(${from}).top+v.documentTop-bounds.top-v.scrollDOM.clientHeight/2;return null;}
+        a.scrollIntoView({block:'center',behavior:'instant'});
+        const r=[...a.getClientRects()].find(r=>r.width>2&&r.height>2&&r.top>=bounds.top&&r.bottom<=bounds.bottom);
         return r?{x:r.x+r.width/2,y:r.y+r.height/2}:null;
       })()`)
-        if (!point) {
-          await evaluate(`document.querySelector('#editor .cm-scroller').scrollTop+=innerHeight/2`)
-          await sleep(50)
-        }
+        if (!point) await sleep(100)
       }
       assert(point, `Link not rendered: ${label}`)
       for (const type of ['mousePressed', 'mouseReleased']) await send('Input.dispatchMouseEvent', { type, ...point, button: 'left', clickCount: 1, modifiers })
@@ -349,7 +349,15 @@ async function runtimeChecks() {
     check('右侧大纲显示 follow_person', () => {})
     await evaluate(`document.querySelector('#editor .cm-scroller').scrollTop=0`)
     await sleep(100)
-    const outlinePoint = await evaluate(`(() => { const button=[...document.querySelectorAll('#right-sidebar .outline-list button')].find(e=>e.textContent==='follow_person'); const r=button.getBoundingClientRect(); return {x:r.x+r.width/2,y:r.y+r.height/2}; })()`)
+    // 侧栏显隐会移动按钮，命中测试通过后再取点击坐标。
+    const outlineHit = `(() => {
+      const button=[...document.querySelectorAll('#right-sidebar .outline-list button')].find(e=>e.textContent==='follow_person')
+      button.scrollIntoView({block:'center',behavior:'instant'})
+      const r=button.getBoundingClientRect(), x=r.x+r.width/2, y=r.y+r.height/2
+      return document.elementFromPoint(x,y)?.closest('button')===button ? {x,y} : null
+    })()`
+    await wait(`!!${outlineHit}`, '大纲按钮可见且可点击')
+    const outlinePoint = await evaluate(outlineHit)
     for (const type of ['mousePressed', 'mouseReleased']) await send('Input.dispatchMouseEvent', { type, ...outlinePoint, button: 'left', clickCount: 1 })
     await wait(identifierVisible, '点击大纲定位到下划线标题')
     check('点击大纲定位到 follow_person', () => {})

@@ -1,4 +1,4 @@
-import { Text } from '@codemirror/state'
+import { ChangeSet, Text, type ChangeDesc } from '@codemirror/state'
 import { EditorView, type ViewUpdate } from '@codemirror/view'
 import { getEditorHandle, onEditorUpdate } from './editor/core'
 import { sourcePositionTop } from './editor/source-line'
@@ -22,13 +22,28 @@ export interface EditorNavigationOptions {
 }
 
 /** 把位置限制在当前文本内，并保存不依赖渲染排版的行列。 */
-function withPositions(anchor: NavigationAnchor, doc: Text, from: number, head: number): NavigationAnchor {
+function withPositions(anchor: NavigationAnchor, doc: Text, from: number, head: number,
+  viewportFrom = anchor.viewport?.from): NavigationAnchor {
   from = Math.max(0, Math.min(from, doc.length))
   head = Math.max(0, Math.min(head, doc.length))
   const start = doc.lineAt(from)
   const end = doc.lineAt(head)
+  let viewport = anchor.viewport
+  if (viewport && viewportFrom !== undefined) {
+    const position = Math.max(0, Math.min(viewportFrom, doc.length))
+    const line = doc.lineAt(position)
+    viewport = { ...viewport, from: position, line: line.number, column: position - line.from,
+      snapshot: position === viewport.from ? viewport.snapshot : undefined }
+  }
   return { ...anchor, anchor: from, head, anchorLine: start.number, anchorColumn: from - start.from,
-    line: end.number, column: head - end.from }
+    line: end.number, column: head - end.from, viewport }
+}
+
+/** 同时映射选区、阅读位置与原生快照，沿用编辑器对变更的解释。 */
+function mapAnchor(anchor: NavigationAnchor, doc: Text, changes: ChangeDesc): NavigationAnchor {
+  const viewport = anchor.viewport && { ...anchor.viewport, from: changes.mapPos(anchor.viewport.from, 1),
+    snapshot: anchor.viewport.snapshot?.map(changes) }
+  return withPositions({ ...anchor, viewport }, doc, changes.mapPos(anchor.anchor, 1), changes.mapPos(anchor.head, 1))
 }
 
 /** 文件重载后按行列尽力定位，不把旧内容带回编辑器。 */
@@ -59,6 +74,10 @@ export class EditorNavigation {
   private observed: NavigationAnchor | null = null
   /** 注销后不再执行排队动作。 */
   private disposed = false
+  /** 新导航使尚未完成的布局恢复失效，防止迟到测量覆盖后续跳转。 */
+  private restoration = 0
+  /** 布局完成前沿用回放目标，连续回放不能把临时视口写入历史。 */
+  private pendingRestore: NavigationAnchor | null = null
 
   /** 绑定文档适配器，不在构造时读取尚未创建的编辑器。 */
   constructor(private readonly options: EditorNavigationOptions) {
@@ -90,19 +109,27 @@ export class EditorNavigation {
   }
 
   /** 文件载入完成后记录一次切换，并同步异步选区事件的基线。 */
-  afterSwitch(): void {
+  afterSwitch(recordJump = false): void {
     this.synchronize()
     if (this.replaying || this.suppressed) return
     if (this.observed) {
       const current = this.history.current
-      if (current && this.sameDocument(current, this.observed)) this.history.updateCurrent(this.observed)
-      else this.history.record(this.observed)
+      if (!recordJump && current && this.sameDocument(current, this.observed)) {
+        this.history.updateCurrent({ ...this.observed,
+          viewport: current.anchor === this.observed.anchor && current.head === this.observed.head ? current.viewport : undefined })
+      } else {
+        this.restoration++
+        this.pendingRestore = null
+        this.history.record(this.observed)
+      }
     }
   }
 
   /** 模式切换只更新当前位置，不新增导航节点。 */
   withoutRecording(action: () => void): void {
     this.history.flush()
+    this.restoration++
+    this.pendingRestore = null
     this.suppressed++
     try { action() } finally {
       this.suppressed--
@@ -118,7 +145,8 @@ export class EditorNavigation {
     if (!identity) return
     const doc = this.document()
     this.history.updateDocument(identity, anchor => withPositions(anchor, doc,
-      atLine(doc, anchor.anchorLine, anchor.anchorColumn), atLine(doc, anchor.line, anchor.column)))
+      atLine(doc, anchor.anchorLine, anchor.anchorColumn), atLine(doc, anchor.line, anchor.column),
+      anchor.viewport && atLine(doc, anchor.viewport.line, anchor.viewport.column)))
     if (!this.replaying) {
       const current = this.history.current
       if (current && this.sameDocument(current, identity)) this.restore(current, false)
@@ -147,6 +175,8 @@ export class EditorNavigation {
   /** 解除观察并取消尚未提交的位置。 */
   dispose(): void {
     this.disposed = true
+    this.restoration++
+    this.pendingRestore = null
     this.unsubscribe?.()
     this.options.source.removeEventListener('select', this.sourceSelected)
     this.options.source.removeEventListener('selectionchange', this.sourceSelected)
@@ -196,14 +226,45 @@ export class EditorNavigation {
     const anchor = sourceMode ? (backward ? source.selectionEnd : source.selectionStart) : view.state.selection.main.anchor
     const head = sourceMode ? (backward ? source.selectionStart : source.selectionEnd) : view.state.selection.main.head
     let viewportFraction = this.observed?.viewportFraction ?? 1 / 3
-    if (measure) {
+    const doc = this.document()
+    let viewport: NavigationAnchor['viewport']
+    if (measure && this.pendingRestore && this.sameDocument(identity, this.pendingRestore)) {
+      viewport = this.pendingRestore.viewport
+    } else if (measure) {
       const height = sourceMode ? source.clientHeight : view.scrollDOM.clientHeight
       const top = sourceMode ? sourcePositionTop(source, head) - source.scrollTop
         : (view.coordsAtPos(head)?.top ?? -1) - view.scrollDOM.getBoundingClientRect().top
       viewportFraction = height > 0 && top >= 0 && top < height ? top / height : 1 / 3
+      if (sourceMode) {
+        // 文本框可能自动折行，按真实排版寻找视口顶部所在的源码行。
+        let low = 1, high = doc.lines
+        while (low < high) {
+          const middle = Math.ceil((low + high) / 2)
+          if (sourcePositionTop(source, doc.line(middle).from) <= source.scrollTop) low = middle
+          else high = middle - 1
+        }
+        const line = doc.line(low)
+        viewport = { from: line.from, line: low, column: 0,
+          offset: sourcePositionTop(source, line.from) - source.scrollTop }
+      } else {
+        const bounds = view.scrollDOM.getBoundingClientRect()
+        const top = bounds.top - view.documentTop
+        const block = view.lineBlockAtHeight(top)
+        const line = doc.lineAt(block.from)
+        viewport = { from: block.from, line: line.number, column: block.from - line.from,
+          offset: block.top - top, snapshot: view.scrollSnapshot() }
+        // 优先锚定屏内文字，避免以屏外长表格的顶部恢复时受表格高度变化影响。
+        for (const visible of view.viewportLineBlocks) {
+          const offset = (view.coordsAtPos(visible.from)?.top ?? -Infinity) - bounds.top
+          if (offset < 0 || offset >= height) continue
+          const line = doc.lineAt(visible.from)
+          viewport = { from: visible.from, line: line.number, column: visible.from - line.from, offset }
+          break
+        }
+      }
     }
-    return withPositions({ ...identity, anchor, head, line: 1, column: 0, anchorLine: 1, anchorColumn: 0, viewportFraction },
-      this.document(), anchor, head)
+    return withPositions({ ...identity, anchor, head, line: 1, column: 0, anchorLine: 1, anchorColumn: 0,
+      viewportFraction, viewport }, doc, anchor, head)
   }
 
   /** 同步程序化动作后的选区，避免延迟的原生事件误录历史。 */
@@ -220,6 +281,8 @@ export class EditorNavigation {
     this.observed = next
     if (this.isSuppressed()) return
     if (previous && this.sameDocument(previous, next) && previous.anchor === next.anchor && previous.head === next.head) return
+    this.restoration++
+    this.pendingRestore = null
     this.history.schedule(next)
   }
 
@@ -228,10 +291,11 @@ export class EditorNavigation {
     if (this.options.isSourceMode()) return
     if (this.isSuppressed()) { this.synchronize(); return }
     if (update.docChanged) {
+      this.restoration++
+      this.pendingRestore = null
       const identity = this.options.getIdentity()
       this.history.cancelPending()
-      if (identity) this.history.updateDocument(identity, anchor => withPositions(anchor, update.state.doc,
-        update.changes.mapPos(anchor.anchor, 1), update.changes.mapPos(anchor.head, 1)))
+      if (identity) this.history.updateDocument(identity, anchor => mapAnchor(anchor, update.state.doc, update.changes))
       this.synchronize()
       if (this.observed) this.history.updateCurrent(this.observed, true)
     } else if (update.selectionSet) {
@@ -253,11 +317,11 @@ export class EditorNavigation {
     this.history.cancelPending()
     if (!this.isSuppressed()) {
       const previousDocument = this.readSourceDocument(previous)
-      let map: (position: number) => number
+      let changes: ChangeDesc
       if (event instanceof SourceInputEvent) {
         // 批量替换已给出精确变更，既无需扫描公共前后缀，也不重建未变化的行。
         this.sourceDocument = event.changes.apply(previousDocument)
-        map = position => event.changes.mapPos(position, 1)
+        changes = event.changes
       } else {
         let start = 0
         while (start < previous.length && start < value.length && previous[start] === value[start]) start++
@@ -265,12 +329,12 @@ export class EditorNavigation {
         let newEnd = value.length
         while (oldEnd > start && newEnd > start && previous[oldEnd - 1] === value[newEnd - 1]) { oldEnd--; newEnd-- }
         this.sourceDocument = previousDocument.replace(start, oldEnd, Text.of(value.slice(start, newEnd).split('\n')))
-        map = position => position < start ? position : position >= oldEnd ? position + newEnd - oldEnd : newEnd
+        changes = ChangeSet.of({ from: start, to: oldEnd, insert: value.slice(start, newEnd) }, previous.length)
       }
       this.sourceDocumentValue = value
       const identity = this.options.getIdentity()
       const doc = this.sourceDocument
-      if (identity) this.history.updateDocument(identity, anchor => withPositions(anchor, doc, map(anchor.anchor), map(anchor.head)))
+      if (identity) this.history.updateDocument(identity, anchor => mapAnchor(anchor, doc, changes))
       this.synchronize()
       if (this.observed) this.history.updateCurrent(this.observed, true)
     } else this.synchronize()
@@ -282,18 +346,43 @@ export class EditorNavigation {
     const from = atLine(doc, anchor.anchorLine, anchor.anchorColumn)
     const head = atLine(doc, anchor.line, anchor.column)
     const fraction = Math.max(0, Math.min(anchor.viewportFraction, 0.9))
+    const viewport = anchor.viewport
+    const position = viewport && atLine(doc, viewport.line, viewport.column)
+    const restoration = ++this.restoration
+    this.pendingRestore = null
     this.suppressed++
     try {
       if (this.options.isSourceMode()) {
         const source = this.options.source
         if (reveal) source.focus({ preventScroll: true })
         source.setSelectionRange(Math.min(from, head), Math.max(from, head), head < from ? 'backward' : 'forward')
-        if (reveal) source.scrollTop = Math.max(0, sourcePositionTop(source, head) - source.clientHeight * fraction)
+        if (reveal) source.scrollTop = Math.max(0, viewport && position !== undefined
+          ? sourcePositionTop(source, position) - viewport.offset
+          : sourcePositionTop(source, head) - source.clientHeight * fraction)
       } else {
         const view = getEditorHandle()!.getView()
-        view.dispatch({ selection: { anchor: from, head }, effects: reveal ? EditorView.scrollIntoView(head,
-          { y: 'start', yMargin: Math.max(24, view.scrollDOM.clientHeight * fraction) }) : undefined })
+        const visibleReference = viewport && viewport.offset >= 0 && viewport.offset < view.scrollDOM.clientHeight
+        view.dispatch({ selection: { anchor: from, head }, effects: reveal ? viewport?.snapshot ?? EditorView.scrollIntoView(position ?? head,
+          { y: 'start', yMargin: viewport ? visibleReference ? viewport.offset : 0
+            : Math.max(24, view.scrollDOM.clientHeight * fraction) }) : undefined })
         if (reveal) view.focus()
+        if (reveal && viewport && position !== undefined) {
+          this.pendingRestore = anchor
+          // 原生快照负责渲染高度变化；失去快照的重载位置再按行与块内偏移恢复。
+          view.requestMeasure({
+            key: this,
+            read: () => view.state.doc === doc && this.restoration === restoration
+              ? view.lineBlockAt(position).top + view.documentTop - view.scrollDOM.getBoundingClientRect().top
+                + view.scrollDOM.scrollTop - viewport.offset : null,
+            write: top => queueMicrotask(() => {
+              // 测量周期末尾才会应用 scrollIntoView，随后写入精确的阅读位置。
+              if (top !== null && view.state.doc === doc && this.restoration === restoration) {
+                if (!viewport.snapshot && !visibleReference) view.scrollDOM.scrollTop = top
+                this.pendingRestore = null
+              }
+            }),
+          })
+        }
       }
     } finally { this.suppressed--; this.synchronize() }
   }
@@ -317,7 +406,7 @@ export class EditorNavigation {
         if (!currentTarget) return
         this.restore(currentTarget)
         this.history.commitReplay()
-        if (this.observed) this.history.updateCurrent(this.observed)
+        if (this.observed) this.history.updateCurrent({ ...this.observed, viewport: currentTarget.viewport })
         return
       }
     } finally { this.history.endReplay(); this.replaying = false; this.synchronize() }

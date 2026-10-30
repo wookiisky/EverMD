@@ -1,9 +1,25 @@
+import type { EditorView } from '@codemirror/view'
+
 /** 文档身份：有路径时以路径为准，未命名文档才使用标签标识。 */
 export interface NavigationIdentity {
   /** 文件的完整路径；未命名文档为 null。 */
   filePath: string | null
   /** 所在标签，仅作为有路径文档的查找提示。 */
   tabId: string
+}
+
+/** 阅读视口的参考行及其屏幕偏移，与编辑光标独立。 */
+export interface NavigationViewport {
+  /** 参考位置的 UTF-16 偏移，编辑时随正文映射。 */
+  from: number
+  /** 参考位置的源码行，重载时按行列夹限。 */
+  line: number
+  /** 参考位置在行内的偏移。 */
+  column: number
+  /** 参考行或渲染块顶部相对视口顶部的像素偏移，可为负数。 */
+  offset: number
+  /** 渲染模式的原生滚动效果，仅含位置与偏移，不持有旧正文。 */
+  snapshot?: ReturnType<EditorView['scrollSnapshot']>
 }
 
 /** 一次导航的位置，不持有正文或编辑器的撤销状态。 */
@@ -22,6 +38,8 @@ export interface NavigationAnchor extends NavigationIdentity {
   anchorColumn: number
   /** 活动光标在可见正文中的纵向比例。 */
   viewportFraction: number
+  /** 离开前测得的阅读位置；未测量的光标跳转沿用光标定位。 */
+  viewport?: NavigationViewport
 }
 
 /** 后退为 -1，前进为 1。 */
@@ -47,6 +65,11 @@ function nearby(a: NavigationAnchor, b: NavigationAnchor): boolean {
   return sameNavigationDocument(a, b) && Math.abs(a.line - b.line) < 5 && Math.abs(a.head - b.head) < 80
 }
 
+/** 选区和阅读参考都按值传递，调用者不能修改历史内部的位置。 */
+function copyAnchor(position: NavigationAnchor): NavigationAnchor {
+  return { ...position, viewport: position.viewport && { ...position.viewport } }
+}
+
 /** 当前窗口的有限导航历史；文件切换和成功判定由外壳负责。 */
 export class NavigationHistory {
   /** 按访问顺序保存的位置，最多 100 条，包含当前位置。 */
@@ -70,7 +93,7 @@ export class NavigationHistory {
   /** 当前实际位置的副本。 */
   get current(): NavigationAnchor | null {
     const entry = this.entries[this.index]
-    return entry ? { ...entry.position } : null
+    return entry ? copyAnchor(entry.position) : null
   }
 
   /** 已保留的位置总数，包括前进分支。 */
@@ -87,11 +110,11 @@ export class NavigationHistory {
     this.cancelPending()
     const current = this.entries[this.index]
     if (current && nearby(current.baseline, position)) {
-      current.position = { ...position }
+      current.position = copyAnchor(position)
       return false
     }
     this.entries.splice(this.index + 1)
-    this.entries.push({ position: { ...position }, baseline: { ...position } })
+    this.entries.push({ position: copyAnchor(position), baseline: copyAnchor(position) })
     if (this.entries.length > 100) this.entries.shift()
     this.index = this.entries.length - 1
     this.onChange()
@@ -106,7 +129,7 @@ export class NavigationHistory {
       return
     }
     this.cancelPending()
-    this.pending = { ...position }
+    this.pending = copyAnchor(position)
     this.timer = setTimeout(() => this.flush(), 500)
   }
 
@@ -128,14 +151,14 @@ export class NavigationHistory {
   updateCurrent(position: NavigationAnchor, resetBaseline = false): void {
     const entry = this.entries[this.index]
     if (!entry || !sameNavigationDocument(entry.position, position)) return
-    entry.position = { ...position }
-    if (resetBaseline) entry.baseline = { ...position }
+    entry.position = copyAnchor(position)
+    if (resetBaseline) entry.baseline = copyAnchor(position)
   }
 
   /** 只查看下一目标；打开失败或取消时无需回滚历史。 */
   peek(direction: NavigationDirection): NavigationAnchor | null {
     const entry = this.entries[this.index + direction]
-    return entry ? { ...entry.position } : null
+    return entry ? copyAnchor(entry.position) : null
   }
 
   /** 开始一次回放，固定记录本身，允许打开过程中映射位置或移除当前项。 */
@@ -146,7 +169,7 @@ export class NavigationHistory {
 
   /** 读取目标的最新位置；外部重载可能已经按新正文映射它。 */
   get replayTarget(): NavigationAnchor | null {
-    return this.replayEntry ? { ...this.replayEntry.position } : null
+    return this.replayEntry ? copyAnchor(this.replayEntry.position) : null
   }
 
   /** 按固定目标提交，目标成为当前项后不再重复向前或向后移动。 */
@@ -188,10 +211,10 @@ export class NavigationHistory {
   updateDocument(identity: NavigationIdentity, map: (position: NavigationAnchor) => NavigationAnchor): void {
     for (const entry of this.entries) {
       if (!sameNavigationDocument(entry.position, identity)) continue
-      entry.position = { ...map({ ...entry.position }) }
-      entry.baseline = { ...map({ ...entry.baseline }) }
+      entry.position = copyAnchor(map(copyAnchor(entry.position)))
+      entry.baseline = copyAnchor(map(copyAnchor(entry.baseline)))
     }
-    if (this.pending && sameNavigationDocument(this.pending, identity)) this.pending = { ...map({ ...this.pending }) }
+    if (this.pending && sameNavigationDocument(this.pending, identity)) this.pending = copyAnchor(map(copyAnchor(this.pending)))
   }
 
   /** 取消定时任务，释放窗口关闭后不再需要的候选。 */

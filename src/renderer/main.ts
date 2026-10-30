@@ -289,7 +289,7 @@ const changesDuringClose = new Set<string>()
 let navigation: EditorNavigation | null = null
 
 // 串行完成一次文档操作，失败后仍允许后续操作继续。
-function enqueueDocumentOperation<T>(operation: () => Promise<T>, record = true): Promise<T> {
+function enqueueDocumentOperation<T>(operation: () => Promise<T>, record = true, recordJump = false): Promise<T> {
   const result = documentOperationQueue.then(async () => {
     if (record) navigation?.beforeSwitch()
     // 等待保存或读取时不能继续写入即将离开的缓冲区，否则新输入可能在切换时遗失。
@@ -303,7 +303,7 @@ function enqueueDocumentOperation<T>(operation: () => Promise<T>, record = true)
       sourceEl().readOnly = sourceReadOnly
       setEditorEditable(!isPresenting())
       documentOperationActive = false
-      if (record) navigation?.afterSwitch()
+      if (record) navigation?.afterSwitch(recordJump)
       // 只读期间恢复选区不能获得可编辑焦点；等装饰与 contenteditable 更新后再聚焦。
       if (!isPresenting()) {
         if (sourceModeActive) sourceEl().focus({ preventScroll: true })
@@ -874,28 +874,20 @@ async function closeTabsMatchingNow(keep: (index: number) => boolean): Promise<v
 }
 
 function bindTabBar(api: import('../preload/index').ElectronAPI): void {
-  // Tab-opens are serialized: each request awaits main (activateFile,
-  // file-opened) before the next runs. Without this, a burst of queued opens
-  // (multi-file launch, fast second-instance) interleaves and two documents
-  // land in one tab (#99).
-  let tabOpenQueue: Promise<void> = Promise.resolve()
+  // 文件载入与目标定位共用文档队列，只提交最终落点，不把目标文件开头记成额外一步。
   const enqueueTabOpen = (path: string, fragment?: string, line?: number): void => {
-    tabOpenQueue = tabOpenQueue.then(async () => {
-      await openFileInNewTab(path)
+    void enqueueDocumentOperation(async () => {
+      await openFileInNewTabNow(path)
       if ((!fragment && line === undefined) || currentFilePath !== path) return
-      // Run after the tab's scroll restoration. Hidden windows suspend frames,
-      // so visual work must not block subsequent requests in the open queue.
-      requestAnimationFrame(() => requestAnimationFrame(() => {
-        if (currentFilePath !== path) return
-        if (line !== undefined) {
-          if (sourceModeActive) jumpToSourceLine(sourceEl(), line)
-          else jumpToLine(Math.min(line, getMarkdown().split('\n').length) - 1)
-          return
-        }
-        if (sourceModeActive) exitSourceMode()
-        jumpToHeading(fragment!)
-      }))
-    }).catch(() => { /* next file still opens */ })
+      // 同步设置选区和滚动效果，由编辑器测量时应用；隐藏窗口无须等动画帧才能完成操作。
+      if (line !== undefined) {
+        if (sourceModeActive) jumpToSourceLine(sourceEl(), line)
+        else jumpToLine(Math.min(line, getMarkdown().split('\n').length) - 1)
+        return
+      }
+      if (sourceModeActive) exitSourceMode()
+      jumpToHeading(fragment!)
+    }, true, !!fragment || line !== undefined).catch(() => { /* 一次打开失败不阻止后续请求。 */ })
   }
   // Tabs are also created from the File menu / ⌘T and from the file list; the
   // strip's own plus is bound above, in renderTabBar.

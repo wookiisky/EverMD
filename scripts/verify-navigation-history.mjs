@@ -202,11 +202,15 @@ check('编辑映射已存位置、比较基准与候选，不新增或截断历�
 check('外部持有的锚点不能修改栈内位置，状态改变通知菜单', () => {
   let notifications = 0
   const history = new NavigationHistory(() => notifications++)
-  const initial = point()
+  const initial = point(0, { viewport: { from: 100, line: 2, column: 0, offset: -20 } })
   history.record(initial)
   initial.head = 999
   history.current.head = 999
   assert.equal(history.current.head, 0)
+  initial.viewport.from = 999
+  history.current.viewport.offset = 999
+  assert.equal(history.current.viewport.from, 100, '保存时复制阅读位置')
+  assert.equal(history.current.viewport.offset, -20, '读取时复制阅读位置')
   history.record(point(100))
   history.peek(-1).head = 888
   assert.equal(history.peek(-1).head, 0)

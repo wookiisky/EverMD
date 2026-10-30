@@ -408,7 +408,8 @@ try {
   await waitFor(`${view}.state.doc.toString() === ${JSON.stringify(fixture)}`, '磁盘删除后无法激活已有标签的内存副本')
   check('磁盘删除后仍可激活已有标签并读取完整内存内容', true)
   await evaluate(main, "require('electron').BrowserWindow.getAllWindows()[0].webContents.send('menu-save')")
-  await waitFor(`require('fs').existsSync(${JSON.stringify(files[0])})`, '内存副本无法保存回原路径', main)
+  // 文件创建早于异步写入完成，必须等实际字节落盘后再断言保存结果。
+  await waitFor(`require('fs').existsSync(${JSON.stringify(files[0])}) && require('fs').readFileSync(${JSON.stringify(files[0])}, 'utf8') === ${JSON.stringify(fixture)}`, '内存副本无法完整保存回原路径', main)
   check('恢复标签的普通保存只重建自己的文件', readFileSync(files[0], 'utf8') === fixture && readFileSync(files[3]).equals(untouched.bytes) && statSync(files[3]).mtimeMs === untouched.mtime)
   // 已确认缺失的基线与“尚不知道修改时间”不同；监听抑制期内也不能覆盖外部重建。
   unlinkSync(files[0])
