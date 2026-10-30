@@ -68,6 +68,16 @@ async function unitChecks() {
   check('HTML anchors do not pollute the heading slug', () => {
     assert.equal(headingAnchorLine('## 中文标题 <a id="explicit"></a>\n', '中文标题'), 0)
   })
+  for (const title of ['follow_person', '**follow_person**', '*follow_person*', '__follow_person__', '_follow_person_', '`follow_person`', 'follow\\_person', '[follow_person](target.md)']) {
+    check(`标题下划线保留：${title}`, () => assert.equal(headingAnchorLine(`### ${title}\n`, 'follow_person'), 0))
+  }
+  check('行内代码中的格式符号属于标题内容', () => {
+    assert.equal(headingAnchorLine('### `a_*b*`\n', 'a_b'), 0)
+  })
+  const distinctHeadings = '### follow_person\n\n### followperson\n\n### follow_person\n\n### **follow_person**\n'
+  for (const [fragment, expected] of [['follow_person', 0], ['followperson', 2], ['follow_person-1', 4], ['follow_person-2', 6]]) {
+    check(`下划线标题独立编号：${fragment}`, () => assert.equal(headingAnchorLine(distinctHeadings, fragment), expected))
+  }
   // Exercise the real tab opener with a failed save, not a copy of its logic.
   const code = readFileSync(join(ROOT, 'src/renderer/main.ts'), 'utf8')
   const start = code.indexOf('async function openFileInNewTabNow(')
@@ -200,6 +210,7 @@ async function runtimeChecks() {
   const source = join(notes, 'source.md'), target = join(notes, '中文 空格.md'), childFile = join(notes, 'child', 'child.md')
   const lineFile = join(notes, 'lines.md'), largeFile = join(notes, 'large.md')
   const anchorFile = join(notes, 'anchors.md')
+  const identifierFile = join(notes, 'heading-identifiers.md')
   const editingFile = join(notes, 'table-editing.md')
   const lineText = ['---', 'title: Lines', '---', ...Array.from({ length: 143 }, (_, i) => `Paragraph ${i}.`), 'LINE_147_TARGET', 'Last line.'].join('\r\n')
   const largeText = [...Array.from({ length: 146 }, () => 'Long wrapped paragraph. '.repeat(180)), 'LARGE_147_TARGET', 'Last line.'].join('\n')
@@ -217,7 +228,7 @@ async function runtimeChecks() {
   const sourceText = '# Source\n\n[相对链接](中文%20空格.md)\n\n[子目录](child/child.md)\n\n[标题](中文%20空格.md#目标标题)\n\n' +
     `[行号](lines.md:147)\n\n[文件行号](${pathToFileURL(lineFile).href}:147)\n\n[源码行号](large.md:147)\n\n[越界行号](lines.md:9999)\n\n` +
     `[File URL](${pathToFileURL(target).href})\n\n[网页](https://example.com)\n\n[缺失](missing.md)\n\n[文内](#source)\n\n[HTML锚点](anchors.md#1-先区分五类对象)\n\n` +
-    '| [表格网页](https://example.com) |\n| --- |\n| [表格链接](中文%20空格.md) |\n| [表格文内](#source) |\n| [空地址]() |\n\n' +
+    '| [表格网页](https://example.com) |\n| --- |\n| [表格链接](中文%20空格.md) |\n| [表格文内](#source) |\n| [follow_person](heading-identifiers.md#follow_person) |\n| [空地址]() |\n\n' +
     '<div><a href="中文%20空格.md">HTML块链接</a></div>\n'
   const anchorText = '# Anchors\n\n' +
     '[文内显式](#1-先区分五类对象) · [块内显式](#deep-block) · [标题显式](#heading-explicit) · [未闭合](#unclosed) · [实体](#a%26b) · [外壳同名](#titlebar) · [无目标](#missing-anchor)\n\n' +
@@ -232,8 +243,9 @@ async function runtimeChecks() {
   writeFileSync(source, sourceText); writeFileSync(target, targetText); writeFileSync(childFile, '# Child\n\n[上级](../source.md)\n')
   writeFileSync(lineFile, lineText); writeFileSync(largeFile, largeText); writeFileSync(anchorFile, anchorText)
   writeFileSync(editingFile, '# Edit\n\n' + tableSource + '\n\n' + nestedTableSource + '\n')
+  writeFileSync(identifierFile, '# Identifiers\n\n| [文内下划线](#follow_person) |\n| --- |\n\n' + 'Paragraph before identifier.\n\n'.repeat(100) + '### follow_person\n\n' + 'Tail.\n\n'.repeat(30))
   writeFileSync(join(notes, 'pixel.png'), Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFAAH/q842iQAAAABJRU5ErkJggg==', 'base64'))
-  const before = new Map([source, target, childFile, lineFile, largeFile, anchorFile, editingFile].map(file => [file, { bytes: readFileSync(file), mtime: statSync(file).mtimeMs }]))
+  const before = new Map([source, target, childFile, lineFile, largeFile, anchorFile, editingFile, identifierFile].map(file => [file, { bytes: readFileSync(file), mtime: statSync(file).mtimeMs }]))
   const anchorBundle = await build({ entryPoints: [join(ROOT, 'src/renderer/editor/document-anchor.ts')], bundle: true, platform: 'browser', format: 'iife', globalName: 'anchorChecks', write: false })
   const themeBundle = await build({ entryPoints: [join(ROOT, 'src/renderer/themes/theme-manager.ts')], bundle: true, platform: 'browser', format: 'iife', globalName: 'themeChecks', write: false })
   const events = join(WORK, 'events.jsonl'), harness = join(WORK, 'main.cjs')
@@ -313,6 +325,39 @@ async function runtimeChecks() {
       assert(point, `Link not rendered: ${label}`)
       for (const type of ['mousePressed', 'mouseReleased']) await send('Input.dispatchMouseEvent', { type, ...point, button: 'left', clickCount: 1, modifiers })
     }
+    const identifierVisible = `document.title==='heading-identifiers.md' && [...document.querySelectorAll('#editor .cm-line')].some(e=>e.textContent.includes('follow_person')&&e.getBoundingClientRect().top>=document.querySelector('#editor .cm-scroller').getBoundingClientRect().top&&e.getBoundingClientRect().bottom<=document.querySelector('#editor .cm-scroller').getBoundingClientRect().bottom)`
+    await click('follow_person')
+    await wait(identifierVisible, '表格链接在新标签中定位到屏外下划线标题')
+    check('表格链接在新标签中定位到下划线标题', () => {})
+    const identifierTabCount = await evaluate(`document.querySelectorAll('.tab-entry').length`)
+    await evaluate(`document.querySelector('#editor .cm-scroller').scrollTop=0`)
+    await wait(`!(${identifierVisible})`, '已有目标标签先离开下划线标题')
+    await openSource(); await click('follow_person')
+    await wait(identifierVisible, '表格链接在已有标签中定位到下划线标题')
+    const reusedIdentifierTabCount = await evaluate(`document.querySelectorAll('.tab-entry').length`)
+    check('下划线锚点复用已有标签', () => assert.equal(reusedIdentifierTabCount, identifierTabCount))
+    await click('文内下划线')
+    await wait(identifierVisible, '表格文内链接定位到下划线标题')
+    check('表格文内链接保留下划线锚点', () => {})
+    const toggleRightSidebar = async () => {
+      const point = await evaluate(`(() => { const r=document.querySelector('#right-sidebar-toggle').getBoundingClientRect(); return {x:r.x+r.width/2,y:r.y+r.height/2}; })()`)
+      for (const type of ['mousePressed', 'mouseReleased']) await send('Input.dispatchMouseEvent', { type, ...point, button: 'left', clickCount: 1 })
+    }
+    const sidebarWasHidden = await evaluate(`document.querySelector('#right-sidebar').hidden`)
+    if (sidebarWasHidden) await toggleRightSidebar()
+    await wait(`!document.querySelector('#right-sidebar').hidden && [...document.querySelectorAll('#right-sidebar .outline-list button')].some(e=>e.textContent==='follow_person')`, '右侧大纲保留标题下划线')
+    check('右侧大纲显示 follow_person', () => {})
+    await evaluate(`document.querySelector('#editor .cm-scroller').scrollTop=0`)
+    await sleep(100)
+    const outlinePoint = await evaluate(`(() => { const button=[...document.querySelectorAll('#right-sidebar .outline-list button')].find(e=>e.textContent==='follow_person'); const r=button.getBoundingClientRect(); return {x:r.x+r.width/2,y:r.y+r.height/2}; })()`)
+    for (const type of ['mousePressed', 'mouseReleased']) await send('Input.dispatchMouseEvent', { type, ...outlinePoint, button: 'left', clickCount: 1 })
+    await wait(identifierVisible, '点击大纲定位到下划线标题')
+    check('点击大纲定位到 follow_person', () => {})
+    if (sidebarWasHidden) {
+      await toggleRightSidebar()
+      await wait(`document.querySelector('#right-sidebar').hidden`, '恢复右侧栏显隐')
+    }
+    await openSource()
     await click('标题')
     await wait(`document.title==='中文 空格.md' && [...document.querySelectorAll('.cm-line')].some(e=>e.textContent.includes('目标标题')&&e.getBoundingClientRect().y>=0&&e.getBoundingClientRect().bottom<innerHeight)`, 'heading in a newly opened document')
     check('plain click opens a new file at an offscreen heading', () => {})
@@ -402,7 +447,7 @@ async function runtimeChecks() {
         });
       })()`)
       check(`${theme}: 表头和正文中的三类链接均已渲染`, () => {
-        assert.deepEqual(tableStyles.filter(a => a.active).map(a => a.label), ['表格网页', '表格链接', '表格文内'])
+        assert.deepEqual(tableStyles.filter(a => a.active).map(a => a.label), ['表格网页', '表格链接', '表格文内', 'follow_person'])
       })
       for (const style of tableStyles) {
         check(`${theme}: ${style.label}默认展示正确`, () => {

@@ -1,3 +1,5 @@
+import { headingText } from './editor/heading-text'
+
 /** 大纲只记录源码位置；按钮和滚动跟踪共享同一份结果。 */
 export interface OutlineItem {
   /** Markdown 标题级别。 */
@@ -30,7 +32,7 @@ export class DocumentOutline {
       } else if (!fence) {
         const match = /^(#{1,6})\s+(.+?)(?:\s+#+)?\s*$/.exec(line)
         if (match) {
-          const title = match[2].replace(/!?(?:\[([^\]]*)\])\([^)]*\)/g, '$1').replace(/[*_`]/g, '').trim()
+          const title = headingText(line)
           if (title) items.push({ level: match[1].length, title, line: lineNumber })
         }
       }

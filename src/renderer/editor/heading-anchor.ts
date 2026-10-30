@@ -1,5 +1,6 @@
 import { parser } from '@lezer/markdown'
 import { frontmatterRange } from './math-scan'
+import { headingText } from './heading-text'
 
 /** Find headings outside the viewport too, ignoring heading-like code blocks. */
 export function headingAnchorLine(markdown: string, fragment: string): number | null {
@@ -15,19 +16,7 @@ export function headingAnchorLine(markdown: string, fragment: string): number | 
     enter(node) {
       if (front && node.name !== 'Document' && node.from < front.to) return false
       if (!/^(ATX|Setext)Heading[1-6]$/.test(node.name)) return
-      // HTML 标签不属于标题文字；使用语法节点，避免删掉行内代码里的尖括号。
-      let text = ''
-      let from = node.from
-      const cursor = node.node.cursor()
-      while (cursor.next()) {
-        if (cursor.name !== 'HTMLTag') continue
-        text += markdown.slice(from, cursor.from)
-        from = cursor.to
-      }
-      text += markdown.slice(from, node.to)
-      const title = text
-        .replace(/^#{1,6}\s+|\s+#+\s*$|\r?\n[=-]+\s*$/g, '')
-        .replace(/!?\[([^\]]*)\]\([^)]*\)/g, '$1').replace(/[*_`]/g, '')
+      const title = headingText(markdown.slice(node.from, node.to))
       const base = slugify(title)
       const count = seen.get(base) ?? 0
       seen.set(base, count + 1)

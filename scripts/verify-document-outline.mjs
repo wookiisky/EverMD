@@ -16,4 +16,22 @@ assert(!sameOutlineLabels(first, outline.read(text.replace('标题', '新标题'
 assert.deepEqual(outline.read('````md\n# 隐藏\n```\n# 仍隐藏\n````\n# 显示'), [{ level: 1, title: '显示', line: 5 }])
 assert.deepEqual(outline.read('# 标题\r\n\r\n## 第二节'), [{ level: 1, title: '标题', line: 0 }, { level: 2, title: '第二节', line: 2 }])
 assert.deepEqual(outline.read('普通正文'), [])
+for (const [source, title] of [
+  ['follow_person', 'follow_person'],
+  ['followperson', 'followperson'],
+  ['**follow_person**', 'follow_person'],
+  ['__follow_person__', 'follow_person'],
+  ['_follow_person_', 'follow_person'],
+  ['`follow_person`', 'follow_person'],
+  ['follow\\_person', 'follow_person'],
+  ['[**follow_person**](target.md "标题")', 'follow_person'],
+  ['[**follow_person**](target.md "标题") 后续', 'follow_person 后续'],
+  ['[follow_person][ref] 后续', 'follow_person 后续'],
+  ['![follow_person](image.png)', 'follow_person'],
+  ['`a_*b*_<tag>`', 'a_*b*_<tag>'],
+  ['*未闭合_follow_person', '*未闭合_follow_person'],
+  ['<span>follow_person</span>', 'follow_person'],
+]) {
+  assert.deepEqual(outline.read(`### ${source} ###`), [{ level: 3, title, line: 0 }], `保留标题正文：${source}`)
+}
 console.log('通过：标题解析、围栏保护、CRLF、内容缓存、正文行号变化、标题变化')
