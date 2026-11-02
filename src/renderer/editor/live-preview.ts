@@ -25,7 +25,9 @@ import { Decoration, EditorView, ViewPlugin, WidgetType, type DecorationSet, typ
 import { EditorState, RangeSetBuilder, StateEffect, StateField, type Extension } from '@codemirror/state'
 import { forceParsing, syntaxTree } from '@codemirror/language'
 import type { SyntaxNode, SyntaxNodeRef, Tree } from '@lezer/common'
-import katex from 'katex'
+import { renderMath } from './math-render'
+import { appendTableInline } from './table-inline'
+import { resolveImageSrc } from './image-source'
 import { attachMathLayout, detachMathLayout } from './math-layout'
 import type { Excluded } from './math-scan'
 import { renderMermaid, attachDiagramZoom, detachDiagramZoom, isDiagramZoomed } from './mermaid-bridge'
@@ -161,7 +163,7 @@ function inRange(range: Range | null, pos: number): boolean {
 }
 
 /**
- * 遍历语法树，跳过属性区及正在编辑的表格内链接。
+ * 遍历语法树，跳过属性区及正在编辑的表格内容。
  *
  * 属性区里是 YAML，不是 markdown：`- `、`---`、`**`、`#` 在那里都只是普通字符。
  * 解析器不认 YAML，会把它们解析成列表项、分隔线、加粗，所以在这里统一挡掉，
@@ -177,9 +179,10 @@ function iterateContent(
   syntaxTree(state).iterate({
     enter: (node) => {
       if (front && node.name !== 'Document' && inRange(front, node.from)) return false
-      // 表格已退回源码时，链接及其内部语法都保留原文，不再叠加行内渲染。
-      if (node.name === 'Link' && isEditingTableLink(state, node.node)) return false
-      return enter(node)
+      const result = enter(node)
+      // Table 自身仍交给收集器处理，内部所有字符都保留为原始 Markdown。
+      if (node.name === 'Table' && isEditingTable(state, node.node)) return false
+      return result
     },
   })
 }
@@ -244,18 +247,6 @@ export const documentFileUrlField = StateField.define<string | null>({
     return value
   },
 })
-
-/** 把文件里的图片地址解析成浏览器能加载的地址。 */
-function resolveImageSrc(raw: string, base: string | null): string {
-  const value = raw.trim().replace(/^<|>$/g, '')
-  if (/^(?:https?:|file:|data:|blob:)/i.test(value)) return value
-  if (!base) return value
-  try {
-    return new URL(value.replaceAll('\\', '/'), base).href
-  } catch {
-    return value
-  }
-}
 
 /** `![alt](src)` / `![alt](<src> "title")`。解析不了就返回 null，退回源码。 */
 function parseImage(source: string): { alt: string; src: string } | null {
@@ -366,13 +357,11 @@ function isBlockActive(state: EditorState, from: number, to: number): boolean {
   return sel.from >= from && sel.to <= to
 }
 
-/** 节点是否位于正在编辑的表格链接内，供语法树与独立扫描共用。 */
-function isEditingTableLink(state: EditorState, node: SyntaxNode): boolean {
+/** 节点是否位于正在编辑的表格内，供语法树与独立扫描共用。 */
+function isEditingTable(state: EditorState, node: SyntaxNode): boolean {
   if (exportingCleanly(state)) return false
-  let insideLink = false
   for (let ancestor: SyntaxNode | null = node; ancestor; ancestor = ancestor.parent) {
-    if (ancestor.name === 'Link') insideLink = true
-    if (ancestor.name === 'Table') return insideLink && isBlockActive(state, ancestor.from, ancestor.to)
+    if (ancestor.name === 'Table') return isBlockActive(state, ancestor.from, ancestor.to)
   }
   return false
 }
@@ -405,22 +394,10 @@ class MathWidget extends WidgetType {
   }
 
   toDOM(): HTMLElement {
-    const span = document.createElement(this.block ? 'div' : 'span')
-    span.className = this.block ? 'cm-md-math cm-md-math-block' : 'cm-md-math cm-md-math-inline'
+    const delimiter = this.block ? '$$' : '$'
+    const span = renderMath(this.code, this.block, delimiter + this.code + delimiter)
     withSourceRange(span, this.from, this.to)
-    try {
-      span.innerHTML = katex.renderToString(this.code, {
-        displayMode: this.block,
-        throwOnError: true,
-        // 公式里可能带用户写的 HTML，KaTeX 的 trust 默认关闭，保持关闭
-        trust: false,
-      })
-      if (this.block) attachMathLayout(span)
-    } catch {
-      // 渲染不了就把源码原样放回去，宁可难看也不丢字
-      span.textContent = (this.block ? '$$' : '$') + this.code + (this.block ? '$$' : '$')
-      span.classList.add('cm-md-math-error')
-    }
+    if (this.block && !span.classList.contains('cm-md-math-error')) attachMathLayout(span)
     return span
   }
 
@@ -462,7 +439,7 @@ function collectMath(state: EditorState, ranges: DecorationRange[]): void {
   // 排除区：属性区、代码块、行内代码、行内 HTML。
   // 这些地方里的 `$x$` 不该渲染成公式——代码就是代码，Obsidian 也是这么处理的。
   for (const range of previewAnalysis(state.doc, syntaxTree(state)).math) {
-    if (isEditingTableLink(state, syntaxTree(state).resolveInner(range.from, 1))) continue
+    if (isEditingTable(state, syntaxTree(state).resolveInner(range.from, 1))) continue
     // 块公式：光标落进去就退回源码，就地改（行内公式的判据见上，保持不露）
     if (isActiveLine(state, range.from) || (range.block && isBlockActive(state, range.from, range.to))) {
       const delim = range.block ? 2 : 1
@@ -495,7 +472,7 @@ function collectHighlight(state: EditorState, ranges: DecorationRange[], exclude
   while ((match = HIGHLIGHT_RE.exec(text)) !== null) {
     const start = match.index
     const end = start + match[0].length
-    if (inExcluded(start) || isEditingTableLink(state, syntaxTree(state).resolveInner(start, 1))) continue
+    if (inExcluded(start) || isEditingTable(state, syntaxTree(state).resolveInner(start, 1))) continue
     const active = isActiveLine(state, start)
     // 藏定界符，给中间那段加底色；光标在这一行时定界符露出来，但仍要能认出来
     const delimiter = (from: number, to: number) =>
@@ -710,7 +687,7 @@ class TableWidget extends WidgetType {
     head.forEach((cell, index) => {
       const th = document.createElement('th')
       th.style.textAlign = alignOf(rows[1]?.[index] ?? '')
-      appendInline(th, cell, this.base)
+      appendTableInline(th, cell, this.base)
       headRow.appendChild(th)
     })
     thead.appendChild(headRow)
@@ -721,7 +698,7 @@ class TableWidget extends WidgetType {
       for (let i = 0; i < head.length; i++) {
         const td = document.createElement('td')
         td.style.textAlign = alignOf(rows[1]?.[i] ?? '')
-        appendInline(td, row[i] ?? '', this.base)
+        appendTableInline(td, row[i] ?? '', this.base)
         tr.appendChild(td)
       }
       tbody.appendChild(tr)
@@ -769,76 +746,11 @@ function alignOf(delimiter: string): string {
   return 'left'
 }
 
-/**
- * 单元格里的行内内容。
- *
- * 用 DOM 拼，不拼 innerHTML：单元格内容来自用户的文件，拼字符串等于把文件里的
- * `<img onerror=...>` 直接执行掉。这里只认粗体、斜体、行内代码、删除线、链接、
- * 图片和 `<br>`，认不出来的就当普通文字。
- *
- * `<br>` 与图片是 #138 补上的：Obsidian、Typora、GitHub 都把格子里的 `<br/>` 画成
- * 换行，把格子里的 `![](x.png)` 画成图片；2.6 也这样，换内核后这两样都退成了纯文字。
- * 行内 HTML 里只有 `<br>` 被认：它是最常跟表格一起用的一个，而其它标签（尤其是带
- * 事件或样式的）放进表格只会多一个要防的口子。
- *
- * 下划线强调要卡词边界（#161）。CommonMark 与 GFM 里 `_` 不能跨在词中间生效，
- * 所以 `local_upload / external_api` 是两个普通单词，`snake_case_name` 也一样；
- * 这里早期只写了 `_` 配对，会把中间那段吃掉变成斜体，连下划线本身也不见了。
- * `*` 不受这条限制（`a*b*c` 在 CommonMark 里确实是斜体），所以两个分支分开写。
- * 边界用 Unicode 字母与数字，中文也算词字符。
- */
-const INLINE_RE =
-  /\*\*(?<strong>.+?)\*\*|(?<![\p{L}\p{N}_])__(?<strongU>(?=\S).+?(?<=\S))__(?![\p{L}\p{N}_])|\*(?<em>.+?)\*|(?<![\p{L}\p{N}_])_(?<emU>(?=\S).+?(?<=\S))_(?![\p{L}\p{N}_])|`(?<code>[^`]+)`|~~(?<strike>.+?)~~|!\[(?<alt>[^\]]*)\]\(\s*(?<src><[^>]*>|[^)\s]+)[^)]*\)|\[(?<linkText>[^\]]*)\]\((?<href>[^)]*)\)|<br\s*\/?>/giu
-
-function appendInline(parent: HTMLElement, text: string, base: string | null): void {
-  INLINE_RE.lastIndex = 0
-  let last = 0
-  let match: RegExpExecArray | null
-  while ((match = INLINE_RE.exec(text)) !== null) {
-    if (match.index > last) parent.appendChild(document.createTextNode(text.slice(last, match.index)))
-    const g = match.groups ?? {}
-    if (g.strong !== undefined || g.strongU !== undefined) {
-      const el = document.createElement('strong')
-      el.textContent = g.strong ?? g.strongU ?? ''
-      parent.appendChild(el)
-    } else if (g.em !== undefined || g.emU !== undefined) {
-      const el = document.createElement('em')
-      el.textContent = g.em ?? g.emU ?? ''
-      parent.appendChild(el)
-    } else if (g.code !== undefined) {
-      const el = document.createElement('code')
-      el.textContent = g.code
-      parent.appendChild(el)
-    } else if (g.strike !== undefined) {
-      const el = document.createElement('s')
-      el.textContent = g.strike
-      parent.appendChild(el)
-    } else if (g.alt !== undefined) {
-      const img = document.createElement('img')
-      img.src = resolveImageSrc(g.src ?? '', base)
-      img.alt = g.alt
-      parent.appendChild(img)
-    } else if (g.linkText !== undefined) {
-      const el = document.createElement('a')
-      el.textContent = g.linkText || g.href || ''
-      const href = (g.href ?? '').trim()
-      // 本地文件和文内锚点也交给统一导航处理器，不让浏览器按应用路径解释。
-      if (href) el.setAttribute('data-href', href)
-      if (/^https?:\/\//i.test(href)) el.setAttribute('href', href)
-      parent.appendChild(el)
-    } else if (/^<br/i.test(match[0])) {
-      parent.appendChild(document.createElement('br'))
-    }
-    last = match.index + match[0].length
-  }
-  if (last < text.length) parent.appendChild(document.createTextNode(text.slice(last)))
-}
-
 function collectTables(state: EditorState, ranges: DecorationRange[], front: Range | null): void {
   iterateContent(state, front, (node) => {
       if (node.name !== 'Table') return
       // 光标在表格里就退回源码：改表格就是改文字（#153）
-      if (isBlockActive(state, node.from, node.to)) {
+      if (isEditingTable(state, node.node)) {
         pushBlockLines(state, node.from, node.to, 'cm-md-table', ranges)
         return false
       }
@@ -931,7 +843,7 @@ function collectFootnotes(state: EditorState, ranges: DecorationRange[], front: 
   // 引用：整段 `[^note]` 换成上标数字
   for (const { from, to, label } of analysis.footnoteReferences) {
     if (front && inRange(front, from)) continue
-    if (isEditingTableLink(state, syntaxTree(state).resolveInner(from, 1))) continue
+    if (isEditingTable(state, syntaxTree(state).resolveInner(from, 1))) continue
     if (definitions.has(label) === false && numbers.has(label) === false) continue
     if (isActiveLine(state, from)) continue
     ranges.push({

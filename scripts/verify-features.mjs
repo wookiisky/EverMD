@@ -1837,7 +1837,22 @@ function main() {
         `退回后=${JSON.stringify(orderedBack)} 期望=${JSON.stringify(orderedBefore)}`)
 
       // 深色主题下选中文字不能被选区色盖住（2026-10-04 报的）。
-      await clickLine(renderer, '待办未完成')
+      // 固定的行首偏移会点到复选框；按待办文字的真实位置点击，再验证原生键盘选区。
+      const taskPoint = await evaluate(renderer, `(async () => {
+        const view = document.querySelector('#editor .cm-content').cmTile.root.view
+        const line = [...document.querySelectorAll('#editor .cm-line')].find(l => l.textContent.includes('待办未完成'))
+        if (!line) throw new Error('待办正文未挂载，无法验证鼠标选区')
+        line.scrollIntoView({ block: 'center', behavior: 'instant' })
+        await new Promise(requestAnimationFrame)
+        await new Promise(requestAnimationFrame)
+        const at = view.state.doc.toString().indexOf('待办未完成') + 2
+        const rect = view.coordsAtPos(at)
+        if (!rect) throw new Error('待办文字没有可点击坐标')
+        return { x: rect.left + 1, y: (rect.top + rect.bottom) / 2 }
+      })()`)
+      for (const type of ['mousePressed', 'mouseReleased']) {
+        await renderer.send('Input.dispatchMouseEvent', { type, ...taskPoint, button: 'left', clickCount: 1 })
+      }
       await pressKey(renderer, 'Home', 'Home', 36)
       await pressKey(renderer, 'End', 'End', 35, 8)
       const selectedTask = await evaluate(renderer, `(() => {

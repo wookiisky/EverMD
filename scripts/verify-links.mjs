@@ -4,7 +4,7 @@
 import assert from 'node:assert/strict'
 import { spawn } from 'node:child_process'
 import { once } from 'node:events'
-import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, statSync, rmSync } from 'node:fs'
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, writeFileSync, statSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { createRequire } from 'node:module'
@@ -154,7 +154,7 @@ async function unitChecks() {
   })
   const { stateExtensions, livePreview, livePreviewField, setCleanExport, EditorState } =
     await import('data:text/javascript;base64,' + Buffer.from(previewBundle.outputFiles[0].text).toString('base64'))
-  const tableText = '正文\n\n| [表格链接](https://example.com) |\n| --- |\n| 内容 |'
+  const tableText = '正文\n\n| [表格链接](https://example.com) |\n| --- |\n| **粗体** *斜体* ~~删除~~ `代码` ==高亮== $x^2$ ![图](pixel.png) <br/> [^note] |\n\n[^note]: 注释'
   let state = EditorState.create({ doc: tableText, selection: { anchor: tableText.indexOf('表格链接') }, extensions: [stateExtensions(), livePreview] })
   const tableLinks = () => {
     const hrefs = []
@@ -165,8 +165,26 @@ async function unitChecks() {
   }
   const doc = state.doc, selection = state.selection
   check('表格编辑状态不添加可导航链接装饰', () => assert.deepEqual(tableLinks(), []))
+  const tableFrom = tableText.indexOf('|'), tableTo = tableText.indexOf('\n\n[^note]')
+  const tableDecorations = () => {
+    const decorations = []
+    state.field(livePreviewField).between(tableFrom, tableTo, (from, to, decoration) => {
+      if (from >= tableFrom && to <= tableTo) decorations.push({ from, to, decoration })
+    })
+    return decorations
+  }
+  check('表格编辑状态仅保留源码行样式，所有原文可见', () => {
+    assert(tableDecorations().length > 0)
+    for (const { from, to, decoration } of tableDecorations()) {
+      assert.equal(from, to, '表格编辑态不应隐藏或替换字符')
+      assert.match(decoration.spec.class ?? '', /^(cm-md-table|cm-md-page-\d+)$/)
+    }
+  })
   state = state.update({ effects: setCleanExport.of(true) }).state
   check('干净导出恢复表格链接装饰', () => assert.deepEqual(tableLinks(), ['https://example.com']))
+  check('干净导出将正在编辑的整张表格恢复为渲染块', () => {
+    assert(tableDecorations().some(({ from, to, decoration }) => from === tableFrom && to === tableTo && decoration.spec.widget))
+  })
   state = state.update({ effects: setCleanExport.of(false) }).state
   check('导出结束恢复表格链接源码', () => assert.deepEqual(tableLinks(), []))
   check('导出切换不修改文档和选区', () => { assert.equal(state.doc, doc); assert.equal(state.selection, selection) })
@@ -216,7 +234,24 @@ async function runtimeChecks() {
   const lineText = ['---', 'title: Lines', '---', ...Array.from({ length: 143 }, (_, i) => `Paragraph ${i}.`), 'LINE_147_TARGET', 'Last line.'].join('\r\n')
   const largeText = [...Array.from({ length: 146 }, () => 'Long wrapped paragraph. '.repeat(180)), 'LARGE_147_TARGET', 'Last line.'].join('\n')
   const targetText = '# Destination\n\n' + 'Paragraph.\n\n'.repeat(100) + '## 目标标题\n\nTail.\n'
-  const tableSource = '| [表格网页](https://example.com) | 说明 |\n| --- | --- |\n| [表格链接](中文%20空格.md) | 编辑入口 |\n| [表格文内](#source) | 正文 |\n| [空地址]() | 空地址 |'
+  const tableSource = [
+    '| [表格网页](https://example.com) $h_1$ | 说明 |',
+    '| --- | --- |',
+    '| [表格链接](中文%20空格.md) **粗体** *斜体* ~~删除~~ `代码` ==高亮== ![图](pixel.png) <br/> <span style="color:red">HTML</span> [^note] | 编辑入口 |',
+    '| [表格文内](#source) | 正文 |',
+    '| [空地址]() | 空地址 |',
+    '| **注视 $\\rightarrow$** 靠近 $\\rightarrow$ 安抚 | 互动箭头 |',
+    '| $$x_1$$ \\(x_2\\) \\[x_3\\] | 公式定界符 |',
+    '| `$x$` 价格 $349 与 \\$5 | 代码和价格 |',
+    '| [地址](https://example.com/$x$) ![地址图](pixel.png?$y$) | 地址隔离 |',
+    '| [](https://example.com/$x$) | 空文字链接 |',
+    '| <span title="$x$">文字</span> | HTML属性 |',
+    '| \\(\\unknowncommand{x}\\) | 错误公式 |',
+    '| $a_{i}+b_{j}$ | 下标公式 |',
+    '| $a<b>c$ | 连续比较公式 |',
+    '| $a < b$ and $c > d$ | 分开比较公式 |',
+    '| 0 < $x$ > 1 and 0 <$y$>1 | 正文比较符号 |',
+  ].join('\n')
   const nestedLinks = [
     '[**加粗文字**](https://example.com/bold)',
     '[`代码文字`](https://example.com/code)',
@@ -297,7 +332,10 @@ async function runtimeChecks() {
       check(`HTML resolution: ${name}`, () => assert.equal(found?.from, expectedFrom))
     }
     const wait = async (expression, label) => {
-      for (let i = 0; i < 80; i++) { if (await evaluate(expression)) return; await sleep(100) }
+      for (let i = 0; i < 80; i++) {
+        if (await (typeof expression === 'function' ? expression() : evaluate(expression))) return
+        await sleep(100)
+      }
       throw new Error(`Timed out: ${label}`)
     }
     await wait(`document.title==='source.md' && !!document.querySelector('[data-href]')`, 'source loaded')
@@ -312,13 +350,19 @@ async function runtimeChecks() {
       assert(from >= 0, `Link missing from source: ${label}`)
       let point
       for (let i = 0; i < 100 && !point; i++) {
-        point = await evaluate(`(() => {
-        const v=document.querySelector('#editor .cm-content').cmTile.root.view, bounds=v.scrollDOM.getBoundingClientRect();
-        const a=[...document.querySelectorAll('#editor [data-href], #editor a[href]')].find(a=>a.textContent===${JSON.stringify(label)});
-        if(!a){v.scrollDOM.scrollTop+=v.lineBlockAt(${from}).top+v.documentTop-bounds.top-v.scrollDOM.clientHeight/2;return null;}
-        a.scrollIntoView({block:'center',behavior:'instant'});
+        point = await evaluate(`(async () => {
+        const v=document.querySelector('#editor .cm-content').cmTile.root.view;
+        const link=()=>[...document.querySelectorAll('#editor [data-href], #editor a[href]')].find(a=>a.textContent===${JSON.stringify(label)});
+        const initial=link();
+        if(!initial){const bounds=v.scrollDOM.getBoundingClientRect();v.scrollDOM.scrollTop+=v.lineBlockAt(${from}).top+v.documentTop-bounds.top-v.scrollDOM.clientHeight/2;return null;}
+        initial.scrollIntoView({block:'center',behavior:'instant'});
+        await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
+        const a=link(), bounds=v.scrollDOM.getBoundingClientRect();
+        if(!a)return null;
         const r=[...a.getClientRects()].find(r=>r.width>2&&r.height>2&&r.top>=bounds.top&&r.bottom<=bounds.bottom);
-        return r?{x:r.x+r.width/2,y:r.y+r.height/2}:null;
+        if(!r)return null;
+        const x=r.x+r.width/2,y=r.y+r.height/2,hit=document.elementFromPoint(x,y);
+        return hit&&a.contains(hit)?{x,y}:null;
       })()`)
         if (!point) await sleep(100)
       }
@@ -397,9 +441,11 @@ async function runtimeChecks() {
     await openSource(); await click('源码行号')
     await wait(`(() => { const s=document.querySelector('#source-editor'); return document.title==='large.md' && s.classList.contains('visible') && s.value.slice(s.selectionStart,s.selectionEnd)==='LARGE_147_TARGET' && s.scrollTop>0; })()`, 'source mode line')
     check('large source document selects line after wrapped paragraphs', () => {})
-    await openSource(); await click('网页'); await sleep(150)
+    await openSource(); await click('网页')
+    await wait(() => existsSync(events) && readFileSync(events, 'utf8').includes('"external":"https://example.com"'), '网页链接调用系统浏览器')
     check('web link still uses the OS browser', () => assert.match(readFileSync(events, 'utf8'), /"external":"https:\/\/example.com"/))
-    await openSource(); await click('缺失'); await sleep(200)
+    await openSource(); await click('缺失')
+    await wait(() => readFileSync(events, 'utf8').includes('"error":'), '缺失文件返回错误')
     check('missing file reports an error', () => assert.match(readFileSync(events, 'utf8'), /"error":/))
     assert.equal(await evaluate('document.title'), 'source.md')
     await openSource(); await click('文内', 0)
@@ -471,6 +517,55 @@ async function runtimeChecks() {
       }
       await evaluate(`window.electronAPI.openExternal(${JSON.stringify(editingFile)})`)
       await wait(`document.title==='table-editing.md' && document.querySelectorAll('.cm-md-table-widget').length===2`, `${theme}: editing fixture loaded`)
+      const math = await evaluate(`(() => {
+        const tables=[...document.querySelectorAll('.cm-md-table-widget')];
+        const cell=label=>[...tables[0].querySelectorAll('tbody tr')].find(row=>row.cells[1]?.textContent===label)?.cells[0];
+        return {
+          header:tables[0].querySelectorAll('th .katex').length,
+          arrows:cell('互动箭头')?.querySelectorAll('.katex').length,
+          bold:cell('互动箭头')?.querySelectorAll('strong .katex').length,
+          delimiters:cell('公式定界符')?.querySelectorAll('.katex').length,
+          code:cell('代码和价格')?.querySelector('code')?.textContent,
+          price:cell('代码和价格')?.textContent,
+          literalMath:cell('代码和价格')?.querySelectorAll('.katex').length,
+          addresses:cell('地址隔离')?.querySelectorAll('.katex').length,
+          href:cell('地址隔离')?.querySelector('a')?.getAttribute('data-href'),
+          image:cell('地址隔离')?.querySelector('img')?.getAttribute('src'),
+          emptyLink:cell('空文字链接')?.querySelector('a')?.textContent,
+          emptyLinkMath:cell('空文字链接')?.querySelectorAll('.katex').length,
+          html:cell('HTML属性')?.textContent,
+          htmlMath:cell('HTML属性')?.querySelectorAll('.katex').length,
+          invalid:cell('错误公式')?.textContent,
+          subscript:cell('下标公式')?.querySelector('.katex annotation')?.textContent,
+          comparison:cell('连续比较公式')?.querySelector('.katex annotation')?.textContent,
+          comparisons:[...cell('分开比较公式')?.querySelectorAll('.katex annotation') ?? []].map(node=>node.textContent),
+          betweenComparisons:cell('分开比较公式')?.textContent,
+          textComparisons:[...cell('正文比较符号')?.querySelectorAll('.katex annotation') ?? []].map(node=>node.textContent),
+          textComparisonFragments:[...cell('正文比较符号')?.childNodes ?? []].filter(node=>node.nodeType===Node.TEXT_NODE).map(node=>node.textContent).join(''),
+          linked:tables[1].querySelectorAll('a .katex').length,
+          blocks:tables.flatMap(table=>[...table.querySelectorAll('.cm-md-math-block')]).length,
+        };
+      })()`)
+      check(`${theme}: 表头、强调和链接文字中的公式正常渲染`, () => {
+        assert.equal(math.header, 1); assert.equal(math.arrows, 2); assert.equal(math.bold, 1)
+        assert.equal(math.delimiters, 3); assert.equal(math.linked, 1)
+        assert.equal(math.subscript, 'a_{i}+b_{j}'); assert.equal(math.blocks, 0)
+      })
+      check(`${theme}: 代码、价格和地址中的美元符号保留原有语义`, () => {
+        assert.equal(math.code, '$x$'); assert(math.price.includes('$349'))
+        assert.equal(math.literalMath, 0); assert.equal(math.addresses, 0)
+        assert.equal(math.href, 'https://example.com/$x$'); assert(math.image.endsWith('pixel.png?$y$'))
+        assert.equal(math.emptyLink, 'https://example.com/$x$'); assert.equal(math.emptyLinkMath, 0)
+        assert.equal(math.html, '<span title="$x$">文字</span>'); assert.equal(math.htmlMath, 0)
+      })
+      check(`${theme}: 无效公式保留原始定界符和内容`, () => assert.equal(math.invalid, '\\(\\unknowncommand{x}\\)'))
+      check(`${theme}: 比较符号不会被当成 HTML 吞掉公式和中间正文`, () => {
+        assert.equal(math.comparison, 'a<b>c')
+        assert.deepEqual(math.comparisons, ['a < b', 'c > d'])
+        assert(math.betweenComparisons.includes(' and '))
+        assert.deepEqual(math.textComparisons, ['x', 'y'])
+        assert.equal(math.textComparisonFragments, '0 <  > 1 and 0 <>1')
+      })
       for (const [entry, rawSource] of [['编辑入口', tableSource], ['嵌套编辑入口', nestedTableSource]]) {
         const point = await evaluate(`(() => {
           const cell = [...document.querySelectorAll('.cm-md-table-widget td')].find(e => e.textContent === ${JSON.stringify(entry)});
@@ -485,7 +580,7 @@ async function runtimeChecks() {
             widgets:rows.flatMap(e=>[...e.querySelectorAll('.cm-md-image,.cm-md-html,.cm-md-math')]).length,
             rendered:document.querySelectorAll('.cm-md-table-widget').length};
         })()`)
-        check(`${theme}: ${entry}完整显示表格链接源码`, () => assert.equal(editing.text, rawSource))
+        check(`${theme}: ${entry}完整显示表格所有 Markdown 源码`, () => assert.equal(editing.text, rawSource))
         check(`${theme}: ${entry}源码没有导航入口，其他表格继续渲染`, () => {
           assert.equal(editing.links, 0); assert.equal(editing.widgets, 0); assert.equal(editing.rendered, 1)
         })
@@ -512,6 +607,30 @@ async function runtimeChecks() {
           assert.equal(readFileSync(events, 'utf8'), eventsBefore)
           assert.equal(selection.title, 'table-editing.md'); assert.equal(selection.inTable, true)
         })
+        const beforeExport = await evaluate(`(() => {
+          const view=document.querySelector('.cm-content').cmTile.root.view;
+          return {text:view.state.doc.toString(), selection:view.state.selection.toJSON()};
+        })()`)
+        await evaluate('window.__colamdPrintExport.enter()')
+        try {
+          const exported = await evaluate(`({tables:document.querySelectorAll('.cm-md-table-widget').length,
+            math:document.querySelectorAll('.cm-md-table-widget .katex').length,
+            raw:document.querySelectorAll('#editor .cm-md-table').length})`)
+          check(`${theme}: ${entry}导出时恢复表格和公式`, () => {
+            assert.equal(exported.tables, 2); assert.equal(exported.math, 13); assert.equal(exported.raw, 0)
+          })
+        } finally {
+          await evaluate('window.__colamdPrintExport.exit()')
+        }
+        const afterExport = await evaluate(`(() => {
+          const view=document.querySelector('.cm-content').cmTile.root.view;
+          return {text:view.state.doc.toString(), selection:view.state.selection.toJSON(),
+            raw:[...document.querySelectorAll('#editor .cm-md-table')].map(row=>row.textContent).join('\\n')};
+        })()`)
+        check(`${theme}: ${entry}导出结束恢复原始源码和选区`, () => {
+          assert.equal(afterExport.text, beforeExport.text); assert.deepEqual(afterExport.selection, beforeExport.selection)
+          assert.equal(afterExport.raw, rawSource)
+        })
         const headingPoint = await evaluate(`(() => {
           const heading=[...document.querySelectorAll('#editor .cm-line')].find(e=>e.textContent==='Edit');
           heading.scrollIntoView({block:'center',behavior:'instant'});
@@ -530,7 +649,8 @@ async function runtimeChecks() {
         check(`${theme}: plain click ${label} opens its file without source editing`, () => {})
       }
       const externalCount = readFileSync(events, 'utf8').split('\n').filter(line=>line.includes('"external":')).length
-      await click('表格网页'); await sleep(150)
+      await click('表格网页')
+      await wait(() => readFileSync(events, 'utf8').split('\n').filter(line=>line.includes('"external":')).length === externalCount + 1, `${theme}: 表格网页链接调用系统浏览器`)
       const nextExternalCount = readFileSync(events, 'utf8').split('\n').filter(line=>line.includes('"external":')).length
       check(`${theme}: 单击表格网页链接调用浏览器`, () => assert.equal(nextExternalCount, externalCount + 1))
       await click('表格文内')
