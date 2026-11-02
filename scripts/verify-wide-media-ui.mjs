@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// 表格、图片和 Mermaid 全宽偏好：真实 Electron 离屏窗口验收，只改变显示、不改用户文件。
+// 表格、图片、Mermaid 和公式全宽偏好：真实 Electron 离屏窗口验收，只改变显示、不改用户文件。
 import assert from 'node:assert/strict'
 import { spawn } from 'node:child_process'
 import { readFileSync, statSync, writeFileSync } from 'node:fs'
@@ -47,6 +47,29 @@ const mermaidFixture = [
 ].join('\n')
 writeFileSync(mermaidFile, mermaidFixture)
 const mermaidMtime = statSync(mermaidFile).mtimeMs
+const mathFile = join(dir, '公式全宽.md')
+const attachmentMath = String.raw`\text{害羞认生（躲避生人）} \longrightarrow \text{好奇试探（远观）} \longrightarrow \text{温和亲近（熟人）} \longrightarrow \text{飞奔黏人撒娇（专属依恋者）}`
+const mathFixture = [
+  '# 公式全宽', '', '普通公式说明文字。', '',
+  '* 同一套社交趋向控制器根据亲密度高低，自然分化出四个阶段的社交表现：',
+  `  $$${attachmentMath}$$`, '* 睡眠充电时，继续记录每日互动日记。', '',
+  `$$${attachmentMath}$$`, '', '$$x^2+y^2=z^2$$', '',
+  '$$', String.raw`\begin{aligned}a&=b+c\\d&=e+f\end{aligned}`, '$$', '',
+  String.raw`$$\unsupportedcommand{x}$$`, '',
+  String.raw`混排公式 $x+1$ 与 $$y+2$$ 后面仍有正文。`, '',
+  '| 公式 | 说明 |', '| --- | --- |', String.raw`| $$x+y$$ | 表格内公式 |`, '',
+  '公式验证结束。', ''
+].join('\n')
+writeFileSync(mathFile, mathFixture)
+const mathMtime = statSync(mathFile).mtimeMs
+const taggedMathFile = join(dir, '编号公式全宽.md')
+const taggedMathFixture = [
+  '# 编号公式', '', `$$${attachmentMath}\\tag{1}$$`, '',
+  `$$\\begin{equation}${attachmentMath}\\end{equation}$$`, ''
+].join('\n')
+writeFileSync(taggedMathFile, taggedMathFixture)
+const taggedMathMtime = statSync(taggedMathFile).mtimeMs
+
 const originalTimes = files.map(file => statSync(file).mtimeMs)
 
 // CDP 请求必须有超时，目标提前关闭时不能静默退出成功。
@@ -136,7 +159,7 @@ const setWide = async enabled => {
   if (await checked() !== enabled) await clickItem('wide-media')
   await waitFor(`document.body.classList.contains('wide-media') === ${enabled}`, '全宽偏好未应用')
   await waitFor(`localStorage.getItem(${JSON.stringify(preference)}) === '${enabled ? '1' : '0'}'`, '全宽偏好未持久化')
-  await pause(100)
+  await evaluate(renderer, 'new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))')
 }
 // 几何从真实布局读取；图片按 alt 定位，不依赖实现添加的独立图片标记。
 const measure = () => evaluate(renderer, `(() => {
@@ -179,17 +202,49 @@ const measureMermaid = () => evaluate(renderer, `(() => {
     failed:{...rect(failed),line:rect(failed.closest('.cm-line'))}
   }
 })()`)
+// 从实际文字盒子读取视觉范围，避免把 KaTeX 撑满容器的外壳误当成公式宽度。
+const measureMath = async () => {
+  await evaluate(renderer, 'new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))')
+  return evaluate(renderer, `(() => {
+  const rect = element => {
+    const value = element.getBoundingClientRect()
+    return {left:value.left,right:value.right,top:value.top,bottom:value.bottom,width:value.width,height:value.height}
+  }
+  const math = [...document.querySelectorAll('.cm-md-math-block')].map(host => {
+    const bases = [...host.querySelectorAll('.katex-html > .base')].map(rect)
+    const visual = bases.length ? {
+      left:Math.min(...bases.map(base => base.left)),right:Math.max(...bases.map(base => base.right)),
+      width:Math.max(...bases.map(base => base.right))-Math.min(...bases.map(base => base.left))
+    } : null
+    const style = getComputedStyle(host)
+    const line = host.closest('.cm-line')
+    return {...rect(host),line:rect(line),path:line.dataset.listPath,visual,
+      background:style.backgroundColor,color:style.color,overflow:style.overflowX,
+      error:host.classList.contains('cm-md-math-error'),text:host.textContent}
+  })
+  const paragraph = [...document.querySelectorAll('.cm-line')].find(line => line.textContent.startsWith('普通公式说明文字。'))
+  const listText = [...document.querySelectorAll('.cm-line')].find(line => line.textContent.includes('同一套社交趋向控制器'))
+  const scroller = ${view}.scrollDOM
+  return {math,paragraph:rect(paragraph),listText:rect(listText),
+    table:rect(document.querySelector('.cm-md-table-widget')),tableText:document.querySelector('.cm-md-table-widget').textContent,
+    inline:[...document.querySelectorAll('.cm-md-math-inline')].map(rect),
+    scroller:{...rect(scroller),clientWidth:scroller.clientWidth,scrollWidth:scroller.scrollWidth}}
+})()`)
+}
+const waitMath = () => waitFor("document.querySelectorAll('.cm-md-math-block').length === 5 && document.querySelectorAll('.cm-md-math-error').length === 1 && document.querySelectorAll('.cm-md-math-inline').length >= 2", '公式夹具没有完成真实渲染')
 const waitMermaid = () => waitFor("document.querySelectorAll('.cm-md-mermaid-ready').length === 2 && document.querySelectorAll('.cm-md-mermaid-failed').length === 1 && [...document.querySelectorAll('.cm-md-mermaid-ready')].every(host => host.querySelector(':scope > svg')?.getBoundingClientRect().width > 0)", 'Mermaid夹具没有完成真实渲染')
 const close = (a, b) => Math.abs(a - b) < 1
 const resize = async (width, height = 1100) => {
   await evaluate(main, `require('electron').BrowserWindow.fromId(${primaryWindowId}).setSize(${width}, ${height})`)
-  await pause(300)
+  await waitFor(`parseFloat(getComputedStyle(${view}.scrollDOM).getPropertyValue('--editor-available-width')) === ${view}.scrollDOM.clientWidth`, '窗口变化后的编辑区宽度测量未完成')
+  await pause(100)
 }
 const setSidebar = async (side, visible) => {
   const current = await evaluate(renderer, `document.body.classList.contains('show-${side}-sidebar')`)
   if (current !== visible) await clickItem(`sidebar-${side}-visible`)
   await waitFor(`document.body.classList.contains('show-${side}-sidebar') === ${visible}`, '侧栏未切换')
-  await pause(250)
+  await waitFor(`parseFloat(getComputedStyle(${view}.scrollDOM).getPropertyValue('--editor-available-width')) === ${view}.scrollDOM.clientWidth`, '侧栏变化后的编辑区宽度测量未完成')
+  await pause(100)
 }
 const clickAccelerator = accelerator => evaluate(main, `(() => {
   const { Menu, BrowserWindow } = require('electron')
@@ -198,7 +253,7 @@ const clickAccelerator = accelerator => evaluate(main, `(() => {
   if (!item) throw new Error('快捷键菜单不存在')
   item.click(item, BrowserWindow.fromId(${primaryWindowId}))
 })()`)
-const filesUnchanged = () => statSync(mermaidFile).mtimeMs === mermaidMtime && readFileSync(mermaidFile,'utf8') === mermaidFixture && files.every((file, index) => statSync(file).mtimeMs === originalTimes[index] && readFileSync(file, 'utf8') === [fixture, secondFixture][index])
+const filesUnchanged = () => statSync(taggedMathFile).mtimeMs === taggedMathMtime && readFileSync(taggedMathFile,'utf8') === taggedMathFixture && statSync(mathFile).mtimeMs === mathMtime && readFileSync(mathFile,'utf8') === mathFixture && statSync(mermaidFile).mtimeMs === mermaidMtime && readFileSync(mermaidFile,'utf8') === mermaidFixture && files.every((file, index) => statSync(file).mtimeMs === originalTimes[index] && readFileSync(file, 'utf8') === [fixture, secondFixture][index])
 
 const launch = async file => {
   child = spawn(require('electron'), [
@@ -242,6 +297,115 @@ try {
   await resize(1440)
   await setSidebar('left', false)
   await setSidebar('right', false)
+  await setWide(false)
+  await evaluate(renderer, `window.electronAPI.openSibling(${JSON.stringify(mathFile)})`)
+  await waitFor(`${content} === ${JSON.stringify(mathFixture)}`, '公式夹具未载入')
+  await evaluate(renderer, `${view}.dispatch({selection:{anchor:0}})`)
+  await waitFor("!!document.querySelector('.cm-md-math-block .katex-html > .base')", '示例公式未渲染')
+  await evaluate(renderer, 'new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))')
+  const firstMath = await evaluate(renderer, `(() => {
+    const host = document.querySelector('.cm-md-math-block')
+    const rect = element => { const box=element.getBoundingClientRect(); return {left:box.left,right:box.right,width:box.width} }
+    return {outer:rect(host),bases:[...host.querySelectorAll('.katex-html > .base')].map(rect),scale:host.style.getPropertyValue('--math-scale'),formula:rect(host.querySelector('.katex-display > .katex')),font:getComputedStyle(host.querySelector('.katex-display')).fontSize}
+  })()`)
+  check('示例列表长公式在普通列宽下不溢出', firstMath.bases.every(base => base.left >= firstMath.outer.left-1 && base.right <= firstMath.outer.right+1), firstMath)
+  await waitMath()
+  const mathBaseline = await measureMath()
+  check('普通列宽下长公式完整适配而不溢出', mathBaseline.math.slice(0,4).every(host => host.visual.left >= host.left-1 && host.visual.right <= host.right+1), mathBaseline)
+  await setWide(true)
+  const mathWide = await measureMath()
+  check('顶层及列表续行块公式共用全宽区域', mathWide.math.slice(0,4).every(host => close(host.line.left,mathWide.scroller.left+40) && close(host.line.right,mathWide.scroller.left+mathWide.scroller.clientWidth-40)), mathWide)
+  check('长公式在普通列宽和全宽下均完整适配且全宽字号更大', [mathBaseline,mathWide].every(layout => layout.math.slice(0,4).every(host => host.visual.left >= host.left-1 && host.visual.right <= host.right+1)) && mathWide.math[0].visual.width > mathBaseline.math[0].visual.width+100, {before:mathBaseline,after:mathWide})
+  check('全宽公式不改变正文、列表文字和所属列表项', close(mathBaseline.paragraph.width,mathWide.paragraph.width) && close(mathBaseline.paragraph.left,mathWide.paragraph.left) && close(mathBaseline.listText.left,mathWide.listText.left) && close(mathBaseline.listText.width,mathWide.listText.width) && !!mathWide.math[0].path && mathWide.math[0].path === mathBaseline.math[0].path)
+  check('短公式保持原字号，混排与表格内公式保留原布局', close(mathBaseline.math[2].visual.width,mathWide.math[2].visual.width) && mathBaseline.inline.every((host,index) => close(host.width,mathWide.inline[index].width)) && mathBaseline.tableText === mathWide.tableText)
+  check('错误公式保留可读源码与普通列宽', mathWide.math[4].error && mathWide.math[4].text === String.raw`$$\unsupportedcommand{x}$$` && close(mathBaseline.math[4].line.width,mathWide.math[4].line.width))
+  check('公式未造成编辑区横向溢出', mathWide.scroller.scrollWidth <= mathWide.scroller.clientWidth+1, mathWide.scroller)
+  await setWide(false)
+  const mathRestored = await measureMath()
+  check('关闭全宽恢复块公式原列宽和适配字号', close(mathRestored.math[0].line.width,mathBaseline.math[0].line.width) && close(mathRestored.math[0].visual.width,mathBaseline.math[0].visual.width))
+  await setWide(true)
+  for (const theme of ['dark','light','elegant']) {
+    await clickItem(`theme-${theme}`)
+    await waitFor(`document.body.classList.contains('theme-${theme}')`, '公式主题未应用')
+    const layout = await measureMath()
+    check(`${theme}主题块公式常态有底色且字色可辨`, layout.math.slice(0,4).every(host => host.background !== 'rgba(0, 0, 0, 0)' && host.background !== 'transparent' && host.color !== host.background), layout.math)
+    if (process.env.COLAMD_WIDE_MEDIA_SCREENSHOTS === '1') {
+      const screenshot = await renderer.send('Page.captureScreenshot',{format:'png'})
+      writeFileSync(`/tmp/colamd-math-width-${theme}.png`,Buffer.from(screenshot.data,'base64'))
+    }
+  }
+  await clickItem('theme-light')
+  for (const [width,left,right] of [[1440,true,true],[680,true,true],[520,false,false]]) {
+    await resize(width)
+    await setSidebar('left',left)
+    await setSidebar('right',right)
+    const layout = await measureMath()
+    check(`${width}px窗口与侧栏下块公式仍完整适配编辑区`, layout.math.slice(0,4).every(host => close(host.line.left,layout.scroller.left+40) && close(host.line.right,layout.scroller.left+layout.scroller.clientWidth-40) && host.visual.left >= host.left-1 && host.visual.right <= host.right+1) && layout.scroller.scrollWidth <= layout.scroller.clientWidth+1, layout)
+  }
+  await resize(1440)
+  await setSidebar('left',false)
+  await setSidebar('right',false)
+  for (const mode of ['exporting','presenting']) {
+    await setWide(false)
+    await evaluate(renderer, `document.body.classList.add('${mode}')`)
+    await pause(150)
+    const before = await measureMath()
+    await setWide(true)
+    const after = await measureMath()
+    check(`${mode}公式布局不受全宽开关影响`, before.math.every((host,index) => close(host.line.width,after.math[index].line.width) && (!host.visual || close(host.visual.width,after.math[index].visual.width))))
+    await evaluate(renderer, `document.body.classList.remove('${mode}')`)
+  }
+  await setWide(false)
+  await renderer.send('Emulation.setEmulatedMedia',{media:'print'})
+  await pause(150)
+  const mathPrintBefore = await measureMath()
+  await setWide(true)
+  const mathPrintAfter = await measureMath()
+  check('PDF打印中的公式列宽不受屏幕全宽开关影响', mathPrintBefore.math.every((host,index) => close(host.line.width,mathPrintAfter.math[index].line.width)))
+  await renderer.send('Emulation.setEmulatedMedia',{media:''})
+  await pause(150)
+  const formula = (await measureMath()).math[0]
+  for (const type of ['mousePressed','mouseReleased']) {
+    await renderer.send('Input.dispatchMouseEvent',{type,x:formula.left+formula.width/2,y:formula.top+formula.height/2,button:'left',clickCount:1})
+  }
+  await waitFor("document.querySelectorAll('.cm-md-math-block').length === 4", '点击块公式未进入源码')
+  const mathPosition = mathFixture.indexOf(attachmentMath)
+  const mathEditing = await evaluate(renderer, `(() => {
+    const point = ${view}.domAtPos(${mathPosition})
+    const element = point.node.nodeType === Node.ELEMENT_NODE ? point.node : point.node.parentElement
+    return {width:element.closest('.cm-line').getBoundingClientRect().width,normal:document.querySelector('#editor .cm-content').getBoundingClientRect().width-80}
+  })()`)
+  check('块公式点击进入源码后恢复普通列宽', close(mathEditing.width,mathEditing.normal), mathEditing)
+  await evaluate(renderer, `${view}.dispatch({selection:{anchor:0}});${view}.focus()`)
+  await waitMath()
+  check('离开源码恢复公式渲染与全宽', close((await measureMath()).math[0].line.width,(await measureMath()).scroller.clientWidth-80))
+  await evaluate(renderer, "document.getElementById('source-toggle-btn').click()")
+  await waitFor("document.getElementById('source-editor').classList.contains('visible')", '公式文档未进入源码模式')
+  const mathSourceWidth = await evaluate(renderer, "document.getElementById('source-editor').getBoundingClientRect().width")
+  await setWide(false)
+  check('公式文档源码模式保持字节和列宽', await evaluate(renderer, `document.getElementById('source-editor').value === ${JSON.stringify(mathFixture)} && Math.abs(document.getElementById('source-editor').getBoundingClientRect().width-${mathSourceWidth}) < 1`))
+  await evaluate(renderer, "document.getElementById('source-toggle-btn').click()")
+  await waitFor("!document.getElementById('source-editor').classList.contains('visible')", '公式文档未恢复渲染')
+  await waitMath()
+  await pause(1200)
+  check('公式布局和主题切换不改文档或触发保存', filesUnchanged() && await evaluate(renderer, `${content} === ${JSON.stringify(mathFixture)} && !document.querySelector('.tab-entry.active').classList.contains('dirty')`))
+  await evaluate(renderer, `window.electronAPI.openSibling(${JSON.stringify(taggedMathFile)})`)
+  await waitFor(`${content} === ${JSON.stringify(taggedMathFixture)} && document.querySelectorAll('.cm-md-math-block .tag').length === 2`, '显式编号与自动编号公式未渲染')
+  for (const [width,wide] of [[1440,false],[1440,true],[520,false],[520,true]]) {
+    await resize(width)
+    await setWide(wide)
+    await evaluate(renderer, 'new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))')
+    const tags = await evaluate(renderer, `(() => {
+      const rect = element => { const box=element.getBoundingClientRect(); return {left:box.left,right:box.right,width:box.width} }
+      return [...document.querySelectorAll('.cm-md-math-block')].map(host => ({host:rect(host),tag:rect(host.querySelector('.tag')),bases:[...host.querySelectorAll('.katex-html > .base')].map(rect)}))
+    })()`)
+    check(`${width}px窗口全宽${wide}时公式编号完整且不与正文重叠`, tags.every(item => item.tag.left >= item.host.left-1 && item.tag.right <= item.host.right+1 && item.bases.every(base => base.left >= item.host.left-1 && base.right <= item.tag.left+1)), tags)
+  }
+  check('编号公式布局不修改源文与文件时间', filesUnchanged() && await evaluate(renderer, `${content} === ${JSON.stringify(taggedMathFixture)} && !document.querySelector('.tab-entry.active').classList.contains('dirty')`))
+  await resize(1440)
+  await setWide(false)
+  await evaluate(renderer, `window.electronAPI.openSibling(${JSON.stringify(mermaidFile)})`)
+  await waitFor(`${content} === ${JSON.stringify(mermaidFixture)}`, 'Mermaid夹具未恢复')
   await waitMermaid()
   const mermaidBaseline = await measureMermaid()
   await setWide(true)
@@ -481,10 +645,10 @@ try {
     item.click(item, BrowserWindow.fromId(${primaryWindowId}))
   })()`)
   for (let i = 0; i < 100; i++) {
-    if (await evaluate(main, "require('electron').Menu.getApplicationMenu().getMenuItemById('wide-media').label === 'Full-width Tables, Images and Mermaid'")) break
+    if (await evaluate(main, "require('electron').Menu.getApplicationMenu().getMenuItemById('wide-media').label === 'Full-width Tables, Images, Mermaid and Math'")) break
     await pause(100)
   }
-  check('英文菜单文案与勾选状态同步', await evaluate(main, "(() => { const item = require('electron').Menu.getApplicationMenu().getMenuItemById('wide-media');return item.label === 'Full-width Tables, Images and Mermaid' && item.checked })()"))
+  check('英文菜单文案与勾选状态同步', await evaluate(main, "(() => { const item = require('electron').Menu.getApplicationMenu().getMenuItemById('wide-media');return item.label === 'Full-width Tables, Images, Mermaid and Math' && item.checked })()"))
   await pause(1200)
   check('开关、主题与布局变化不修改文档或触发保存', filesUnchanged() && await evaluate(renderer, `${content} === ${JSON.stringify(fixture)} && !document.querySelector('.tab-entry.active').classList.contains('dirty')`))
   await closeApp()

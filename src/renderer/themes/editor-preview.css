@@ -63,14 +63,15 @@
   box-sizing: border-box;
 }
 
-/* 全宽只放宽目标行的可用空间，沿用原来的表格排版、图片尺寸与 Mermaid 缩放。
+/* 全宽只放宽目标行的可用空间，沿用原来的表格排版、图片尺寸与图表缩放。
  * 使用滚动条以内的实际宽度，侧栏与窗口变化由布局测量统一更新。
  * 导出、放映和打印各有布局；图片导出的快照也没有 .cm-editor 外壳。 */
 @media screen {
   body.wide-media:not(.exporting):not(.presenting):not(.paper):not(.slides-printing) #editor > .cm-editor > .cm-scroller > .cm-content > .cm-line:is(
     .cm-md-table-standalone:has(> .cm-md-table-widget),
     .cm-md-image-standalone:has(.cm-md-image:not(.cm-md-image-failed)),
-    .cm-md-mermaid-standalone:has(> .cm-md-mermaid-ready:not(.cm-md-mermaid-failed))
+    .cm-md-mermaid-standalone:has(> .cm-md-mermaid-ready:not(.cm-md-mermaid-failed)),
+    :has(> .cm-md-math-block:not(.cm-md-math-error))
   ) {
     width: calc(var(--editor-available-width, 100%) - 80px);
     margin-inline: calc((100% - var(--editor-available-width, 100%) + 80px) / 2);
@@ -531,11 +532,17 @@
   padding: 8px;
   margin: 0.25em 0;
   border-radius: 6px;
+  color: var(--text-color);
+  background: var(--code-bg);
   cursor: text;
 }
 
-.cm-content .cm-md-math-block:hover {
-  background: var(--code-bg);
+/* 按公式文字的真实宽度调整字号，同时调整实际占高；保留 KaTeX 的编号布局。
+ * 仅编辑器屏幕视图适配宽度，导出快照、打印与放映继续使用原有排版。 */
+@media screen {
+  body:not(.exporting):not(.presenting):not(.paper):not(.slides-printing) #editor > .cm-editor .cm-md-math-block:not(.cm-md-math-error) .katex-display {
+    font-size: calc(1em * var(--math-scale, 1));
+  }
 }
 
 /* 渲不出来时退回源码，用一个淡底色提示「这里没能渲染」，但文字照旧可读。 */

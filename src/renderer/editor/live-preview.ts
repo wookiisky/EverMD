@@ -26,6 +26,7 @@ import { EditorState, RangeSetBuilder, StateEffect, StateField, type Extension }
 import { forceParsing, syntaxTree } from '@codemirror/language'
 import type { SyntaxNode, SyntaxNodeRef, Tree } from '@lezer/common'
 import katex from 'katex'
+import { attachMathLayout, detachMathLayout } from './math-layout'
 import type { Excluded } from './math-scan'
 import { renderMermaid, attachDiagramZoom, detachDiagramZoom, isDiagramZoomed } from './mermaid-bridge'
 import { sanitizeHTML, cleanStyle } from './html-sanitize'
@@ -414,12 +415,18 @@ class MathWidget extends WidgetType {
         // 公式里可能带用户写的 HTML，KaTeX 的 trust 默认关闭，保持关闭
         trust: false,
       })
+      if (this.block) attachMathLayout(span)
     } catch {
       // 渲染不了就把源码原样放回去，宁可难看也不丢字
       span.textContent = (this.block ? '$$' : '$') + this.code + (this.block ? '$$' : '$')
       span.classList.add('cm-md-math-error')
     }
     return span
+  }
+
+  // 观察器与渲染块一起释放，避免继续测量已离开视口的公式。
+  destroy(dom: HTMLElement): void {
+    detachMathLayout(dom)
   }
 }
 
