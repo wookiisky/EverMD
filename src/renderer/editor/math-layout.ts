@@ -3,6 +3,22 @@
 /** 每个公式的清理函数，跟随 widget 的生命周期释放观察器与待执行测量。 */
 const layouts = new WeakMap<HTMLElement, () => void>()
 
+/** 还原未缩小时的公式正文及对称编号留位，供适配字号和按需全宽共用。 */
+export function measureMathNaturalWidth(host: HTMLElement): number {
+  const display = host.querySelector<HTMLElement>('.katex-display')
+  const formula = display?.querySelector<HTMLElement>('.katex-html')
+  if (!display || !formula) return 0
+  const boxes = Array.from(formula.querySelectorAll<HTMLElement>(':scope > .base'), base => base.getBoundingClientRect())
+  if (boxes.length === 0) return 0
+  const tag = formula.querySelector<HTMLElement>(':scope > .tag')
+  const fontSize = parseFloat(getComputedStyle(display).fontSize)
+  const scale = fontSize / parseFloat(getComputedStyle(host).fontSize)
+  const bodyWidth = Math.max(...boxes.map(box => box.right)) - Math.min(...boxes.map(box => box.left))
+  // 保留 KaTeX 的居中正文与靠右编号，给编号两侧对称留位，避免缩小后互相覆盖。
+  const tagSpace = tag ? 2 * (tag.getBoundingClientRect().width + fontSize) : 0
+  return (bodyWidth + tagSpace) / scale
+}
+
 /** 根据真实文字宽度调整字号，保留公式比例，短公式不放大。 */
 export function attachMathLayout(host: HTMLElement): void {
   const display = host.querySelector<HTMLElement>('.katex-display')
@@ -18,15 +34,10 @@ export function attachMathLayout(host: HTMLElement): void {
     frame = requestAnimationFrame(() => {
       const style = getComputedStyle(host)
       const available = host.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight)
-      const boxes = bases.map(base => base.getBoundingClientRect())
-      const bodyWidth = Math.max(...boxes.map(box => box.right)) - Math.min(...boxes.map(box => box.left))
-      // 保留 KaTeX 的居中正文与靠右编号，给编号两侧对称留位，避免缩小后互相覆盖。
-      const tagSpace = tag ? 2 * (tag.getBoundingClientRect().width + parseFloat(getComputedStyle(display).fontSize)) : 0
-      const width = bodyWidth + tagSpace
+      const width = measureMathNaturalWidth(host)
       if (available <= 0 || width <= 0) return
       // 从实际字号还原原宽度，避免反复测量时累计缩小；字体载入后也重新适配。
-      const scale = parseFloat(getComputedStyle(display).fontSize) / parseFloat(style.fontSize)
-      const next = Math.min(1, scale * available / width)
+      const next = Math.min(1, available / width)
       if (Math.abs(next - Number(host.style.getPropertyValue('--math-scale') || 1)) > 0.0001) {
         host.style.setProperty('--math-scale', String(next))
       }

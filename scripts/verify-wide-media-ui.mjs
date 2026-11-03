@@ -27,7 +27,7 @@ const fixture = [
   '![加载失败](missing.svg)', '', '[![链接图片](large.svg)](https://example.com)', '',
   '![相邻图片一](small.svg) ![相邻图片二](small.svg)', '', '尾段文字。', ''
 ].join('\n')
-for (const [name, width, height] of [['large', 1800, 45], ['small', 90, 12]]) {
+for (const [name, width, height] of [['large', 1800, 45], ['small', 90, 12], ['boundary', 640, 12]]) {
   writeFileSync(join(dir, `${name}.svg`), `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}"><rect width="${width}" height="${height}" fill="#888"/></svg>`)
 }
 const scratchFile = join(dir, '增量编辑.md')
@@ -69,6 +69,15 @@ const taggedMathFixture = [
 ].join('\n')
 writeFileSync(taggedMathFile, taggedMathFixture)
 const taggedMathMtime = statSync(taggedMathFile).mtimeMs
+const adaptiveFile = join(dir, '按需扩宽.md')
+const longCell = '这是需要在普通列宽内自动换行的表格内容。'.repeat(4)
+const adaptiveFixture = [
+  '# 按需扩宽', '', '| 项目 | 内容 |', '| --- | --- |', `| 长内容 | ${longCell} |`, '',
+  '| 显式换行 | 内容 |', '| --- | --- |', '| 第一行<br>第二行 | 简短说明 |', '',
+  '![临界图片](boundary.svg)', '', '$$a+b+c+d+e+f=g+h+i+j+k+l$$', '',
+  String.raw`$$x\tag{1234567890123456789012345678901234567890}$$`, ''
+].join('\n')
+writeFileSync(adaptiveFile, adaptiveFixture)
 
 const originalTimes = files.map(file => statSync(file).mtimeMs)
 
@@ -182,6 +191,7 @@ const measure = () => evaluate(renderer, `(() => {
     tableDisplay: getComputedStyle(table).display, tableOverflow: getComputedStyle(table).overflowX,
     lineOverflow: getComputedStyle(line).overflowX,
     small: rect(document.querySelector('img[alt="小图片"]')),
+    smallLine: rect(document.querySelector('img[alt="小图片"]').closest('.cm-line')),
     nested: ['混排图片','列表图片','引用图片','单元格图片'].map(alt => ({alt,...rect(document.querySelector('img[alt="'+alt+'"]'))}))
   }
 })()`)
@@ -198,7 +208,7 @@ const measureMermaid = () => evaluate(renderer, `(() => {
   return {
     scroller:{...rect(scroller),clientWidth:scroller.clientWidth},
     large:{...rect(large),line:rect(large.closest('.cm-line')),svg:rect(largeSvg),natural:Number(largeSvg.getAttribute('width')),viewBox:largeSvg.getAttribute('viewBox'),overflow:getComputedStyle(large).overflowX,display:getComputedStyle(large).display},
-    small:{...rect(small),svg:rect(smallSvg),natural:Number(smallSvg.getAttribute('width'))},
+    small:{...rect(small),line:rect(small.closest('.cm-line')),svg:rect(smallSvg),natural:Number(smallSvg.getAttribute('width'))},
     failed:{...rect(failed),line:rect(failed.closest('.cm-line'))}
   }
 })()`)
@@ -232,7 +242,16 @@ const measureMath = async () => {
 })()`)
 }
 const waitMath = () => waitFor("document.querySelectorAll('.cm-md-math-block').length === 5 && document.querySelectorAll('.cm-md-math-error').length === 1 && document.querySelectorAll('.cm-md-math-inline').length >= 2", '公式夹具没有完成真实渲染')
-const waitMermaid = () => waitFor("document.querySelectorAll('.cm-md-mermaid-ready').length === 2 && document.querySelectorAll('.cm-md-mermaid-failed').length === 1 && [...document.querySelectorAll('.cm-md-mermaid-ready')].every(host => host.querySelector(':scope > svg')?.getBoundingClientRect().width > 0)", 'Mermaid夹具没有完成真实渲染')
+// 图表插入后还需等待布局测量完成，以实际行宽判定，避免依赖实现添加的标记。
+const waitMermaid = async () => {
+  await waitFor("document.querySelectorAll('.cm-md-mermaid-ready').length === 2 && document.querySelectorAll('.cm-md-mermaid-failed').length === 1 && [...document.querySelectorAll('.cm-md-mermaid-ready')].every(host => host.querySelector(':scope > svg')?.getBoundingClientRect().width > 0)", 'Mermaid夹具没有完成真实渲染')
+  await waitFor(`(() => {
+    const line = document.querySelector('.cm-md-mermaid-ready').closest('.cm-line')
+    const wide = matchMedia('screen').matches && document.body.matches('.wide-media:not(.exporting):not(.presenting):not(.paper):not(.slides-printing)')
+    const expected = wide ? ${view}.scrollDOM.clientWidth-80 : document.querySelector('#editor .cm-content').getBoundingClientRect().width-80
+    return Math.abs(line.getBoundingClientRect().width-expected) < 1
+  })()`, 'Mermaid渲染后的行宽测量未完成')
+}
 const close = (a, b) => Math.abs(a - b) < 1
 const resize = async (width, height = 1100) => {
   await evaluate(main, `require('electron').BrowserWindow.fromId(${primaryWindowId}).setSize(${width}, ${height})`)
@@ -314,7 +333,8 @@ try {
   check('普通列宽下长公式完整适配而不溢出', mathBaseline.math.slice(0,4).every(host => host.visual.left >= host.left-1 && host.visual.right <= host.right+1), mathBaseline)
   await setWide(true)
   const mathWide = await measureMath()
-  check('顶层及列表续行块公式共用全宽区域', mathWide.math.slice(0,4).every(host => close(host.line.left,mathWide.scroller.left+40) && close(host.line.right,mathWide.scroller.left+mathWide.scroller.clientWidth-40)), mathWide)
+  check('顶层及列表续行长公式共用全宽区域', mathWide.math.slice(0,2).every(host => close(host.line.left,mathWide.scroller.left+40) && close(host.line.right,mathWide.scroller.left+mathWide.scroller.clientWidth-40)), mathWide)
+  check('短公式和显式多行公式保留原行宽与位置', mathWide.math.slice(2,4).every((host,index) => close(host.line.width,mathBaseline.math[index+2].line.width) && close(host.line.left,mathBaseline.math[index+2].line.left)), {before:mathBaseline.math.slice(2,4),after:mathWide.math.slice(2,4)})
   check('长公式在普通列宽和全宽下均完整适配且全宽字号更大', [mathBaseline,mathWide].every(layout => layout.math.slice(0,4).every(host => host.visual.left >= host.left-1 && host.visual.right <= host.right+1)) && mathWide.math[0].visual.width > mathBaseline.math[0].visual.width+100, {before:mathBaseline,after:mathWide})
   check('全宽公式不改变正文、列表文字和所属列表项', close(mathBaseline.paragraph.width,mathWide.paragraph.width) && close(mathBaseline.paragraph.left,mathWide.paragraph.left) && close(mathBaseline.listText.left,mathWide.listText.left) && close(mathBaseline.listText.width,mathWide.listText.width) && !!mathWide.math[0].path && mathWide.math[0].path === mathBaseline.math[0].path)
   check('短公式保持原字号，混排与表格内公式保留原布局', close(mathBaseline.math[2].visual.width,mathWide.math[2].visual.width) && mathBaseline.inline.every((host,index) => close(host.width,mathWide.inline[index].width)) && mathBaseline.tableText === mathWide.tableText)
@@ -340,7 +360,8 @@ try {
     await setSidebar('left',left)
     await setSidebar('right',right)
     const layout = await measureMath()
-    check(`${width}px窗口与侧栏下块公式仍完整适配编辑区`, layout.math.slice(0,4).every(host => close(host.line.left,layout.scroller.left+40) && close(host.line.right,layout.scroller.left+layout.scroller.clientWidth-40) && host.visual.left >= host.left-1 && host.visual.right <= host.right+1) && layout.scroller.scrollWidth <= layout.scroller.clientWidth+1, layout)
+    check(`${width}px窗口与侧栏下长公式仍使用全宽且所有公式完整适配`, layout.math.slice(0,2).every(host => close(host.line.left,layout.scroller.left+40) && close(host.line.right,layout.scroller.left+layout.scroller.clientWidth-40)) && layout.math.slice(0,4).every(host => host.visual.left >= host.left-1 && host.visual.right <= host.right+1) && layout.scroller.scrollWidth <= layout.scroller.clientWidth+1, layout)
+    check(`${width}px窗口与侧栏下短公式沿用普通列宽`, layout.math.slice(2,4).every(host => close(host.line.width,layout.paragraph.width) && close(host.line.left,layout.paragraph.left)), layout.math.slice(2,4))
   }
   await resize(1440)
   await setSidebar('left',false)
@@ -414,6 +435,7 @@ try {
   check('Mermaid行保留编辑区两侧留白与既有代码内边距', close(mermaidWide.large.line.left,mermaidWide.scroller.left+40) && close(mermaidWide.large.line.right,mermaidWide.scroller.left+mermaidWide.scroller.clientWidth-40) && mermaidWide.large.svg.left >= mermaidWide.large.left-1 && mermaidWide.large.svg.right <= mermaidWide.large.right+1, mermaidWide)
   check('Mermaid宽图按容器与原始尺寸共同限制最大宽度', close(mermaidWide.large.svg.width,Math.min(mermaidWide.large.width,mermaidWide.large.natural)), mermaidWide.large)
   check('Mermaid小图不强制放大', close(mermaidWide.small.svg.width,mermaidBaseline.small.svg.width) && close(mermaidWide.small.svg.width,mermaidWide.small.natural))
+  check('Mermaid小图保留原行宽与位置', close(mermaidWide.small.line.width,mermaidBaseline.small.line.width) && close(mermaidWide.small.line.left,mermaidBaseline.small.line.left), {before:mermaidBaseline.small,after:mermaidWide.small})
   check('Mermaid失败块保持原正文宽度和源码', close(mermaidWide.failed.line.width,mermaidBaseline.failed.line.width) && await evaluate(renderer, "document.querySelector('.cm-md-mermaid-failed').textContent.includes('this-is-not-a-mermaid-diagram')"))
   check('Mermaid全宽没有引入新的显示或内部溢出行为', mermaidWide.large.overflow === mermaidBaseline.large.overflow && mermaidWide.large.display === mermaidBaseline.large.display)
   await setWide(false)
@@ -485,6 +507,53 @@ try {
   await evaluate(renderer, `${view}.dispatch({selection:{anchor:0}});${view}.focus()`)
   await waitMermaid()
   check('离开源码后Mermaid恢复全宽且不改文档', (await measureMermaid()).large.svg.width > mermaidBaseline.large.svg.width+100 && await evaluate(renderer,`${content} === ${JSON.stringify(mermaidFixture)} && !document.querySelector('.tab-entry.active').classList.contains('dirty')`))
+  await evaluate(renderer, `window.electronAPI.openSibling(${JSON.stringify(adaptiveFile)})`)
+  await waitFor(`${content} === ${JSON.stringify(adaptiveFixture)} && document.querySelectorAll('.cm-md-table-widget').length === 2 && document.querySelector('img[alt="临界图片"]')?.complete && !!document.querySelector('.cm-md-math-block .base')`, '按需扩宽夹具未渲染')
+  // 从各块实际行盒读取布局，同时覆盖自然宽度、显式换行及公式编号。
+  const adaptiveLayout = () => evaluate(renderer, `(() => {
+    const rect = element => {const box=element.getBoundingClientRect();return {left:box.left,right:box.right,width:box.width,height:box.height}}
+    const tables=[...document.querySelectorAll('.cm-md-table-widget')]
+    const image=document.querySelector('img[alt="临界图片"]')
+    const math=document.querySelector('.cm-md-math-block')
+    const content=document.querySelector('#editor .cm-content')
+    return {normal:content.clientWidth-80,available:${view}.scrollDOM.clientWidth-80,
+      tables:tables.map(rect),image:rect(image.closest('.cm-line')),math:rect(math.closest('.cm-line')),
+      numbered:rect(document.querySelector('.cm-md-math-block .tag').closest('.cm-line')),
+      breaks:tables[1].querySelectorAll('br').length}
+  })()`)
+  await setWide(false)
+  const adaptiveBaseline = await adaptiveLayout()
+  await setWide(true)
+  await pause(100)
+  const adaptiveWide = await adaptiveLayout()
+  check('自动换行的长表格使用全宽，显式换行的短表格保持原宽与位置', close(adaptiveWide.tables[0].width,adaptiveWide.available) && adaptiveWide.tables[0].width > adaptiveBaseline.tables[0].width+100 && close(adaptiveWide.tables[1].width,adaptiveBaseline.tables[1].width) && close(adaptiveWide.tables[1].left,adaptiveBaseline.tables[1].left) && adaptiveWide.breaks === 1, {before:adaptiveBaseline,after:adaptiveWide})
+  check('公式正文虽短但编号放不下时仍扩宽', close(adaptiveBaseline.numbered.width,adaptiveBaseline.normal) && close(adaptiveWide.numbered.width,adaptiveWide.available) && adaptiveWide.numbered.width > adaptiveBaseline.numbered.width+100, {before:adaptiveBaseline,after:adaptiveWide})
+  for (const column of [640,638,642]) {
+    await evaluate(renderer, `document.querySelector('#editor .cm-content').style.setProperty('--editor-column-width','${column}px')`)
+    await pause(150)
+    const layout = await adaptiveLayout()
+    check(`${column}px正文列宽按图片原始宽度判断是否扩宽`, close(layout.normal,column) && close(layout.image.width,column < 640 ? layout.available : column), layout)
+  }
+  await evaluate(renderer, "document.querySelector('#editor .cm-content').style.removeProperty('--editor-column-width')")
+  await pause(150)
+  const beforeFont = await adaptiveLayout()
+  await evaluate(renderer, "document.querySelector('#editor .cm-content').style.fontSize='48px'")
+  await pause(150)
+  const largeFont = await adaptiveLayout()
+  check('字号增大后原本放得下的公式自动扩宽', close(beforeFont.math.width,beforeFont.normal) && close(largeFont.math.width,largeFont.available) && largeFont.math.width > beforeFont.math.width+100, {before:beforeFont,after:largeFont})
+  await evaluate(renderer, "document.querySelector('#editor .cm-content').style.removeProperty('font-size')")
+  await pause(150)
+  const restoredFont = await adaptiveLayout()
+  check('恢复字号后公式回到原列宽与位置', close(restoredFont.math.width,beforeFont.math.width) && close(restoredFont.math.left,beforeFont.math.left), {before:beforeFont,after:restoredFont})
+  const longCellPosition = adaptiveFixture.indexOf(longCell)
+  await evaluate(renderer, `${view}.dispatch({changes:{from:${longCellPosition},to:${longCellPosition+longCell.length},insert:'简短内容'},selection:{anchor:0},userEvent:'input.type'})`)
+  await pause(200)
+  const shortened = await adaptiveLayout()
+  check('表格内容从长变短后恢复原列宽与位置', close(shortened.tables[0].width,adaptiveBaseline.tables[0].width) && close(shortened.tables[0].left,adaptiveBaseline.tables[0].left), {before:adaptiveBaseline,after:shortened})
+  await evaluate(renderer, `${view}.dispatch({changes:{from:0,to:${view}.state.doc.length,insert:${JSON.stringify(adaptiveFixture)}},selection:{anchor:0},userEvent:'input.type'})`)
+  await clickAccelerator('CmdOrCtrl+S')
+  await waitFor("!document.querySelector('.tab-entry.active').classList.contains('dirty')", '按需扩宽夹具未恢复保存')
+  check('按需扩宽验证只修改自身临时文件', readFileSync(adaptiveFile,'utf8') === adaptiveFixture && filesUnchanged())
   await setWide(false)
   await evaluate(renderer, `window.electronAPI.openSibling(${JSON.stringify(files[0])})`)
   await waitFor(`${content} === ${JSON.stringify(fixture)}`, '图片和表格夹具未载入')
@@ -493,10 +562,12 @@ try {
   const baseline = await measure()
   await setWide(true)
   const wide = await measure()
-  check('大表格和独立大图使用更宽空间', wide.table.width > baseline.table.width + 100 && wide.image.width > baseline.image.width + 100)
+  check('短表格保留原宽度和位置', close(wide.table.width,baseline.table.width) && close(wide.table.left,baseline.table.left), {before:baseline.table,after:wide.table})
+  check('独立大图使用更宽空间', wide.image.width > baseline.image.width + 100)
   check('正文列宽和文字位置保持不变', close(wide.paragraph.width, baseline.paragraph.width) && close(wide.paragraph.left, baseline.paragraph.left) && close(wide.content.width, baseline.content.width))
-  check('全宽内容止于编辑区两侧留白', close(wide.table.left, wide.scroller.left + 40) && close(wide.table.right, wide.scroller.left + wide.scroller.clientWidth - 40) && wide.image.left >= wide.scroller.left + 39 && wide.image.right <= wide.scroller.left + wide.scroller.clientWidth - 39, wide)
+  check('全宽图片止于编辑区两侧留白', wide.image.left >= wide.scroller.left + 39 && wide.image.right <= wide.scroller.left + wide.scroller.clientWidth - 39, wide)
   check('图片保持原始比例且小图不放大', close(wide.image.width / wide.image.height, wide.imageNatural / wide.imageHeight) && close(wide.small.width, 90))
+  check('小图片保留原行宽与位置', close(wide.smallLine.width,baseline.smallLine.width) && close(wide.smallLine.left,baseline.smallLine.left), {before:baseline.smallLine,after:wide.smallLine})
   check('独立链接图片可使用更宽空间', wide.linked.width > baseline.linked.width + 100)
   check('相邻多图与加载失败仍使用原正文行宽', close(wide.adjacent.width, baseline.adjacent.width) && close(wide.failed.width, baseline.failed.width))
   check('混排和各嵌套容器中的图片不扩宽', wide.nested.every((image, index) => close(image.width, baseline.nested[index].width)))
@@ -521,7 +592,7 @@ try {
     await clickItem(`theme-${theme}`)
     await waitFor(`document.body.classList.contains('theme-${theme}')`, '主题未应用')
     const layout = await measure()
-    check(`${theme}主题使用编辑区可用宽度`, close(layout.table.width, layout.scroller.clientWidth - 80) && layout.image.width <= layout.scroller.clientWidth - 79)
+    check(`${theme}主题短表格保持正文列宽且大图不超出编辑区`, close(layout.table.width, layout.paragraph.width) && close(layout.table.left, layout.paragraph.left) && layout.image.width <= layout.scroller.clientWidth - 79)
     if (process.env.COLAMD_WIDE_MEDIA_SCREENSHOTS === '1') {
       const screenshot = await renderer.send('Page.captureScreenshot', { format: 'png' })
       writeFileSync(`/tmp/colamd-wide-media-${theme}.png`, Buffer.from(screenshot.data, 'base64'))
@@ -532,7 +603,7 @@ try {
     await setSidebar('left', left)
     await setSidebar('right', right)
     const layout = await measure()
-    check(`${width}px窗口、左栏${left}右栏${right}时遵循编辑区边界`, close(layout.table.left, layout.scroller.left + 40) && close(layout.table.right, layout.scroller.left + layout.scroller.clientWidth - 40) && layout.image.left >= layout.scroller.left + 39 && layout.image.right <= layout.scroller.left + layout.scroller.clientWidth - 39, layout)
+    check(`${width}px窗口、左栏${left}右栏${right}时遵循编辑区边界`, layout.table.left >= layout.scroller.left + 39 && layout.table.right <= layout.scroller.left + layout.scroller.clientWidth - 39 && layout.image.left >= layout.scroller.left + 39 && layout.image.right <= layout.scroller.left + layout.scroller.clientWidth - 39, layout)
   }
   await resize(1440)
   await setSidebar('left', false)
