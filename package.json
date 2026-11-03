@@ -62,6 +62,7 @@
     "verify:document-outline": "node scripts/verify-document-outline.mjs",
     "verify:file-panel-model": "node scripts/verify-file-panel-model.mjs",
     "verify:file-panel-view": "node scripts/verify-file-panel-window.mjs && node scripts/verify-file-panel-view.mjs",
+    "verify:path-tooltips": "node scripts/verify-path-tooltips.mjs",
     "verify:startup": "node scripts/verify-startup.mjs",
     "verify:startup-performance": "node scripts/verify-startup-performance.mjs",
     "verify:auto-updater-loader": "node scripts/verify-auto-updater-loader.mjs",

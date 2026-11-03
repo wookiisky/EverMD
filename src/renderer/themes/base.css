@@ -383,13 +383,16 @@ body.platform-win #titlebar {
 /* One floating label, used by the strip and by the file panel. */
 #hover-tip {
   position: fixed;
+  box-sizing: border-box;
+  max-width: calc(100vw - 16px);
   padding: 4px 8px;
   border-radius: 5px;
   background: color-mix(in srgb, var(--text-color) 86%, transparent);
   color: var(--bg-color);
   font-size: 11px;
   letter-spacing: 0.01em;
-  white-space: nowrap;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
   pointer-events: none;
   z-index: 60;
 }

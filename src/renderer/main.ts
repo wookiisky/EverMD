@@ -408,24 +408,22 @@ function markActiveTabDirty(): void {
   entry?.classList.toggle('dirty', dirty)
 }
 
-// --- The floating label ---
-// ONE fixed layer for every name the shell has to shorten: a tab (where it also
-// carries ⌘W) and a file-panel row. Neither the strip nor the panel can host it
-// — both clip their own overflow — so the renderer positions it.
-// A tab waits longer: hovering a tab is usually a prelude to clicking it, and a
-// label that jumps out immediately is noise. A row is different — the name is
-// what was asked for, so it answers sooner.
+// 标签与文件列表共用浮层，放在外层以避开各自容器的 overflow 裁切。
+// 路径提示只作短暂停留，普通操作说明继续使用原有延时。
 const TAB_TIP_DELAY = 1000
-const ROW_TIP_DELAY = 450
+const PATH_TIP_DELAY = 200
 
 let tipTimer: ReturnType<typeof setTimeout> | undefined
 
 function showTip(anchor: HTMLElement, text: string, side: 'below' | 'left' | 'right'): void {
   const tip = document.getElementById('hover-tip') as HTMLElement | null
-  if (!tip) return
+  if (!tip || !anchor.isConnected) return
   tip.textContent = text
-  tip.hidden = false
   const rect = anchor.getBoundingClientRect()
+  // 先按条目一侧的实际空位换行，避免长路径被窗口边界挤回条目上。
+  tip.style.maxWidth = side === 'below' ? ''
+    : `${Math.max(0, side === 'right' ? window.innerWidth - rect.right - 16 : rect.left - 16)}px`
+  tip.hidden = false
   const width = tip.offsetWidth
   if (side !== 'below') {
     // Beside the panel and level with the row: the label describes the list, so
@@ -441,7 +439,7 @@ function showTip(anchor: HTMLElement, text: string, side: 'below' | 'left' | 'ri
 }
 
 function scheduleTip(anchor: HTMLElement, text: string, side: 'below' | 'left' | 'right', delay: number): void {
-  clearTimeout(tipTimer)
+  hideTip()
   tipTimer = setTimeout(() => showTip(anchor, text, side), delay)
 }
 
@@ -451,16 +449,20 @@ function hideTip(): void {
   if (tip) tip.hidden = true
 }
 
-// A tab whose name fits says nothing but the shortcut; only a truncated name is
-// worth spelling out. The full path never appears on hover: it was the system
-// tooltip, and it reads as an accident.
+// 已保存标签显示自己的路径；空白标签只使用名称，不虚构文件位置。
 function tabTipText(entry: HTMLElement): string {
   const shortcut = '⌘W'
-  const name = entry.querySelector('.tab-entry-name') as HTMLElement | null
-  const full = entry.dataset.fullName ?? ''
-  if (!name || !full) return shortcut
-  return name.scrollWidth > name.clientWidth + 1 ? `${full} · ${shortcut}` : shortcut
+  const name = entry.dataset.filePath || entry.dataset.fullName
+  return name ? `${name} · ${shortcut}` : shortcut
 }
+
+// 用户开始操作或视口变化后，提示与等待中的计时一并关闭。
+document.addEventListener('pointerdown', hideTip, true)
+document.addEventListener('keydown', hideTip, true)
+document.addEventListener('contextmenu', hideTip, true)
+document.addEventListener('scroll', hideTip, true)
+window.addEventListener('resize', hideTip)
+window.addEventListener('blur', hideTip)
 
 function hideTabTip(): void {
   hideTip()
@@ -525,6 +527,7 @@ function renderTabBar(): void {
     entry.dataset.tabId = tab.id
     entry.setAttribute('role', 'tab')
     entry.dataset.fullName = tabLabel(tab)
+    if (tab.filePath) entry.dataset.filePath = tab.filePath
     if (tab.id === activeTabId) {
       entry.classList.add('active')
       entry.setAttribute('aria-selected', 'true')
@@ -913,7 +916,7 @@ function bindTabBar(api: import('../preload/index').ElectronAPI): void {
     lastHoverPoint = point
     const target = e.target as HTMLElement
     const entry = target.closest('.tab-entry') as HTMLElement | null
-    if (entry) scheduleTip(entry, tabTipText(entry), 'below', TAB_TIP_DELAY)
+    if (entry) scheduleTip(entry, tabTipText(entry), 'below', PATH_TIP_DELAY)
     else hideTabTip()
   })
   tabBarEl().addEventListener('mouseleave', () => {
@@ -1429,7 +1432,7 @@ function updateFileTitle(): void {
 // 文件列表数据、节点和刷新轮次分别管理，连续事件只绘制最新结果。
 const filePanel = new FilePanelModel(path => window.electronAPI.listDirectory(path), scheduleFileListRender)
 const filePanelView = new FilePanelView(
-  (button, label, side) => scheduleTip(button, label, side, ROW_TIP_DELAY),
+  (button, label, side) => scheduleTip(button, label, side, PATH_TIP_DELAY),
   hideTip,
 )
 

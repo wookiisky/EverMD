@@ -314,9 +314,8 @@ export class FilePanelView {
     const label = document.createElement('span')
     label.className = 'file-entry-name'
     button.addEventListener('mouseenter', () => {
-      if (label.scrollWidth <= label.clientWidth + 1) return
       const side = list.closest<HTMLElement>('.sidebar')?.id === 'right-sidebar' ? 'left' : 'right'
-      this.showTip(button, label.textContent ?? '', side)
+      this.showTip(button, row.file.path, side)
     })
     button.addEventListener('mouseleave', this.hideTip)
     button.dataset.path = row.file.path
@@ -343,9 +342,9 @@ export class FilePanelView {
     entry.chevron!.className = `file-entry-chevron${row.expanded ? ' expanded' : ''}${row.file.kind === 'parent' ? ' back' : ''}`
     const name = row.file.kind === 'parent' ? text.back : row.file.name
     if (entry.label.textContent !== name) entry.label.textContent = name
-    button.title = row.file.kind === 'directory'
+    button.setAttribute('aria-label', row.file.kind === 'directory'
       ? text[row.expanded ? 'collapse' : 'expand'].replace('{name}', row.file.name)
-      : row.file.kind === 'parent' ? text.parent : row.file.name
+      : row.file.kind === 'parent' ? text.parent : row.file.name)
     button.classList.toggle('active', row.file.path === activePath)
   }
 }
