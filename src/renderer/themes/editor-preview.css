@@ -583,6 +583,16 @@
   background: var(--selection-bg, color-mix(in srgb, var(--text-color) 18%, transparent));
 }
 
+/* 行内代码的背景在文字层，会盖住 CodeMirror 在后方绘制的选区。
+ * 只为行内代码恢复原生选区，让浏览器在背景上画高亮，也能处理软换行。
+ * drawSelection 用 !important 隐藏原生选区，这里需要覆盖；导出和打印仍保持透明。 */
+@media screen {
+  body:not(.exporting) #editor .cm-md-inlinecode::selection,
+  body:not(.exporting) #editor .cm-md-inlinecode *::selection {
+    background: var(--selection-bg, color-mix(in srgb, var(--text-color) 18%, transparent)) !important;
+  }
+}
+
 /*
  * 导出时把编辑器自身的痕迹收起来。
  *
