@@ -23,6 +23,7 @@ import { stateExtensions, editableCompartment, bodyStart } from './state'
 import { editorTheme } from './source-theme'
 import { cursorColors } from './cursor-colors'
 import { wideMediaLayout } from './wide-media-layout'
+import { scrollViewportRecovery } from './scroll-viewport-recovery'
 
 /** 与目标文档一起安装的显示配置，不属于编辑历史。 */
 export interface DocumentViewOptions {
@@ -163,6 +164,7 @@ export function createEditorCore(parent: HTMLElement, options: EditorOptions = {
     drawSelection(),
     cursorColors,
     wideMediaLayout,
+    scrollViewportRecovery,
     // 自动换行。CodeMirror 默认**不换行**，长行会横向滚动；markdown 正文必须换行。
     EditorView.lineWrapping,
     dropCursor(),

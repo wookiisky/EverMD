@@ -98,6 +98,62 @@ const PROBE = `(() => {
   })
 })()`
 
+/** 模拟测量退出时视口已更新，但最后一次正文重画被跳过。 */
+async function verifyStaleViewport(renderer) {
+  const result = await evaluate(renderer, `(async () => {
+    const scroller = document.querySelector('#editor .cm-scroller')
+    const view = scroller.querySelector('.cm-content').cmTile.root.view
+    const { doc, selection } = view.state
+    const overlap = () => {
+      const top = scroller.getBoundingClientRect().top + scroller.clientTop
+      const bottom = top + scroller.clientHeight
+      return Math.max(0, ...[...view.contentDOM.querySelectorAll(':scope > .cm-gap')].map(gap => {
+        const rect = gap.getBoundingClientRect()
+        return Math.min(bottom, rect.bottom) - Math.max(top, rect.top)
+      }))
+    }
+    const docView = view.docView
+    const redraw = docView.update
+    const before = await new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        docView.update = redraw
+        scroller.removeEventListener('scrollend', stop, true)
+        reject(new Error('滚动未结束'))
+      }, 2000)
+      const stop = () => {
+        clearTimeout(timeout)
+        docView.update = redraw
+        resolve({ gap: overlap(), top: scroller.scrollTop })
+      }
+      scroller.addEventListener('scrollend', stop, { capture: true, once: true })
+      docView.update = () => false
+      scroller.scrollTop = 30000
+    })
+    let updates = 0
+    docView.update = function (update) {
+      if (update.transactions.length) updates++
+      return redraw.call(this, update)
+    }
+    try {
+      await new Promise(resolve => setTimeout(resolve, 450))
+      return {
+        before,
+        after: { gap: overlap(), top: scroller.scrollTop },
+        updates,
+        unchanged: view.state.doc === doc && view.state.selection.eq(selection),
+      }
+    } finally {
+      docView.update = redraw
+    }
+  })()`)
+  const { before, after, updates, unchanged } = result
+  const ok = before.gap >= 150 && after.gap <= 2 && Math.abs(before.top - after.top) <= 2
+    && updates === 1 && unchanged
+  console.log(`${ok ? '✓' : '✗'} 停稳后的屏内占位：${before.gap}px → ${after.gap}px，` +
+    `滚动位置 ${before.top} → ${after.top}，同步 ${updates} 次，原文和选区${unchanged ? '一致' : '变化'}`)
+  return ok
+}
+
 async function main() {
   mkdirSync(WORK, { recursive: true })
   const source = join(WORK, 'big.md')
@@ -105,8 +161,12 @@ async function main() {
 
   const port = 9960 + Math.floor(Math.random() * 30)
   const child = spawn('npx', ['electron', 'scripts/offscreen-window.cjs', source, `--user-data-dir=${udd}`,
-    `--remote-debugging-port=${port}`
-  ], { cwd: APP, stdio: 'ignore', detached: true })
+    `--remote-debugging-port=${port}`,
+    '--disable-background-timer-throttling', '--disable-renderer-backgrounding', '--disable-backgrounding-occluded-windows',
+  ], {
+    cwd: APP, stdio: 'ignore', detached: true,
+    env: { ...process.env, EVERMD_STARTUP_HOME: join(WORK, 'home') },
+  })
 
   let failures = 0
   try {
@@ -138,6 +198,7 @@ async function main() {
         `视口 ${state.rows} 行，原始标记 ${state.raw} 行，有装饰 ${state.decorated} 行，` +
         `等了 ${waited}ms，首行「${state.first}」`)
     }
+    if (!await verifyStaleViewport(renderer)) failures++
   } finally {
     stopVerifyApp(udd)
     await sleep(300)
@@ -145,10 +206,10 @@ async function main() {
   }
 
   if (failures) {
-    console.log(`\n✗ ${failures} 个滚动位置没渲染（视口里还是原始 markdown）`)
+    console.log(`\n✗ ${failures} 项滚动渲染检查失败`)
     process.exitCode = 1
   } else {
-    console.log(`\n✓ ${POSITIONS.length} 个滚动位置都是渲染过的`)
+    console.log(`\n✓ ${POSITIONS.length + 1} 项滚动渲染检查通过`)
   }
 }
 

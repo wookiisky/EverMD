@@ -36,6 +36,7 @@ import { isChinese } from '../ui-language'
 import { hideBlankLinesField, hiddenBlankLineNumbers, updateBlankLineAnalysis } from './blank-line-visibility'
 import { documentText } from './document-text'
 import { documentAnalysis, previewAnalysis } from './document-analysis'
+import { codeFoldDecorations, codeFoldingState, codeFoldStateChanged } from './code-folding'
 
 /** 给区间加样式类，不隐藏任何字符。 */
 const MARK = Decoration.mark.bind(Decoration)
@@ -1080,23 +1081,29 @@ function collectBlocks(state: EditorState, ranges: DecorationRange[], front: Ran
       case 'FencedCode': {
         // 右上角的复制按钮挂在第一行（围栏那一行）末尾，鼠标悬停代码块时才显形。
         // 导出态不加：导出的是一篇文档，不是编辑器此刻的样子。
-        const code = exportingCleanly(state) ? '' : codeInsideFence(state, node)
-        if (code !== '') {
-          ranges.push({
-            from: state.doc.lineAt(node.from).to,
-            to: state.doc.lineAt(node.from).to,
-            deco: Decoration.widget({ widget: new CodeCopyWidget(code), side: 1 }),
-          })
-        }
+        const clean = exportingCleanly(state)
+        const code = clean ? '' : codeInsideFence(state, node)
         const startLine = state.doc.lineAt(node.from)
         const endLine = state.doc.lineAt(Math.max(node.from, node.to - 1))
+        const folds = clean ? [] : codeFoldDecorations(state, node.node)
+        const collapsed = folds.some(({ from, to }) => from === startLine.to && to > from)
+        ranges.push(...folds)
+        if (code !== '') {
+          ranges.push({
+            from: startLine.to,
+            to: startLine.to,
+            // 整块折叠从首行行尾开始，复制按钮留在替换区间之前。
+            deco: Decoration.widget({ widget: new CodeCopyWidget(code), side: -1 }),
+          })
+        }
         // 每一行都加底色，首行与末行额外加圆角，拼出一个代码块的外形
-        for (let n = startLine.number; n <= endLine.number; n++) {
+        const last = collapsed ? startLine.number : endLine.number
+        for (let n = startLine.number; n <= last; n++) {
           const lineFrom = state.doc.line(n).from
           const cls = [
             'cm-md-codeblock',
             n === startLine.number ? 'cm-md-codeblock-first' : '',
-            n === endLine.number ? 'cm-md-codeblock-last' : '',
+            n === last ? 'cm-md-codeblock-last' : '',
           ].filter(Boolean).join(' ')
           ranges.push({ from: lineFrom, to: lineFrom, deco: BLOCK(cls) })
         }
@@ -1308,7 +1315,7 @@ export const livePreviewField = StateField.define<DecorationSet>({
     const wasClean = tr.startState.field(cleanExportField, false) ?? false
     const hideBlankLines = tr.state.field(hideBlankLinesField, false) ?? false
     const hidBlankLines = tr.startState.field(hideBlankLinesField, false) ?? false
-    if (!tr.docChanged && !tr.selection && !flash && !parsed && !rebased && focused === wasFocused && clean === wasClean && hideBlankLines === hidBlankLines) return deco
+    if (!tr.docChanged && !tr.selection && !flash && !parsed && !rebased && focused === wasFocused && clean === wasClean && hideBlankLines === hidBlankLines && !codeFoldStateChanged(tr.startState, tr.state)) return deco
     updateBlankLineAnalysis(tr, clean)
     return buildDecorations(tr.state, flashValue)
   },
@@ -1399,6 +1406,7 @@ export const livePreview: Extension = [
   cleanExportField,
   documentFileUrlField,
   hideBlankLinesField,
+  codeFoldingState,
   livePreviewField,
   parseRefresh,
 ]

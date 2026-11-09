@@ -1,0 +1,4 @@
+{
+  "zh": { "foldBlock": "折叠代码块", "unfoldBlock": "展开代码块", "foldSection": "折叠这段代码", "unfoldSection": "展开这段代码" },
+  "en": { "foldBlock": "Collapse code block", "unfoldBlock": "Expand code block", "foldSection": "Collapse code section", "unfoldSection": "Expand code section" }
+}

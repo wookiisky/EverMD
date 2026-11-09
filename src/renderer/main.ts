@@ -2,6 +2,7 @@ import { createEditor, focusEditor, getMarkdown, getEditorView, getEditorScrolle
 import { markdownForWord } from './editor/mermaid-export'
 import { withDiagramZoomPaused } from './editor/mermaid-bridge'
 import { jumpToSourceLine, sourcePositionTop } from './editor/source-line'
+import { clearCodeFolds, suspendCodeFolding } from './editor/code-folding'
 import { EditorView } from '@codemirror/view'
 import { documentHTMLFrom } from './editor/clean-html'
 import { isPresenting, startSlideshow, stopSlideshow } from './slideshow'
@@ -1183,10 +1184,13 @@ function toggleSourceModeNow(): void {
     if (view) {
       view.dispatch({
         selection: { anchor: backward ? selectionEnd : selectionStart, head },
-        effects: EditorView.scrollIntoView(head, {
-          y: 'start',
-          yMargin: caretViewportOffset(fraction, view.scrollDOM.clientHeight, view.defaultLineHeight),
-        }),
+        effects: [
+          clearCodeFolds.of(null),
+          EditorView.scrollIntoView(head, {
+            y: 'start',
+            yMargin: caretViewportOffset(fraction, view.scrollDOM.clientHeight, view.defaultLineHeight),
+          }),
+        ],
       })
       const { doc, selection } = view.state
       const tabId = activeTabId
@@ -1561,8 +1565,7 @@ async function withCleanExport<T>(run: () => Promise<T>): Promise<T> {
  * 导出前把窗口摆成「纸」，导完收回去。
  *
  * 两件事：
- * ① 藏起编辑器的痕迹：当前行不再显形源码（状态层开关），光标、选区、属性区由
- *    `body.exporting` 交给 CSS。导出的是一篇文档，不是编辑器此刻的样子。
+ * ① 暂时展开代码并藏起编辑器的痕迹。光标、选区、属性区由 `body.exporting` 交给 CSS。
  * ② 摊平成块流，等 CodeMirror 把整篇渲染出来。不做这一步，快照里只有当前视口那一屏。
  */
 async function withExportLayout<T>(run: () => Promise<T>): Promise<T> {
@@ -1653,6 +1656,19 @@ async function exportCurrentImage(preset: 'desktop' | 'mobile'): Promise<void> {
   if (wasSourceMode) enterSourceMode(content, sourceScrollRatio)
 }
 
+/** 幻灯片量完页高后还会进入通用打印流程，由幻灯片布局最后恢复编辑视图。 */
+let slidesExportActive = false
+
+/** 结束幻灯片布局并恢复折叠显示。 */
+function exitSlidesExport(): void {
+  try {
+    exitPrintLayout()
+  } finally {
+    slidesExportActive = false
+    setCleanExport(false)
+  }
+}
+
 // 导出幻灯片 PDF: the file and the dialog belong to the main process, so it
 // asks the window to become paper through this hook. The deck's rule holds here
 // too — pages come from the RENDERED document — so source mode is rendered
@@ -1667,9 +1683,19 @@ window.__colamdSlidesExport = {
         requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
       })
     }
-    return enterPrintLayout()
+    // 页高取自编辑器 DOM，必须在测量前展开代码，打印结束后再恢复。
+    slidesExportActive = true
+    let layoutReady = false
+    try {
+      setCleanExport(true)
+      const layout = await enterPrintLayout()
+      layoutReady = layout !== false
+      return layout
+    } finally {
+      if (!layoutReady) exitSlidesExport()
+    }
   },
-  exit: () => exitPrintLayout()
+  exit: exitSlidesExport
 }
 
 // 导出 PDF 打印的是**这个窗口本身**（主进程直接 printToPDF），所以两件事都得在
@@ -1693,7 +1719,7 @@ window.__colamdPrintExport = {
   },
   exit: () => {
     exitPaperLayout()
-    setCleanExport(false)
+    if (!slidesExportActive) setCleanExport(false)
   }
 }
 
@@ -1718,12 +1744,16 @@ async function toggleSlideshow(): Promise<void> {
     })
   }
 
+  // 先还原完整代码，再由放映读取每页的 DOM。
+  const view = getEditorView()
+  view?.dispatch({ effects: suspendCodeFolding.of(true) })
   const started = startSlideshow({
     onStart: () => {
       setEditorEditable(false)
       void window.electronAPI.setSlideshowFullscreen(true)
     },
     onExit: () => {
+      view?.dispatch({ effects: suspendCodeFolding.of(false) })
       setEditorEditable(!documentOperationActive)
       void window.electronAPI.setSlideshowFullscreen(false)
       if (wasSourceMode) enterSourceMode(content, sourceScrollRatio)
@@ -1731,7 +1761,10 @@ async function toggleSlideshow(): Promise<void> {
   })
   // Nothing to present (an empty document has no page): put the user back where
   // they were instead of leaving them in a mode that did not open.
-  if (!started && wasSourceMode) enterSourceMode(content, sourceScrollRatio)
+  if (!started) {
+    view?.dispatch({ effects: suspendCodeFolding.of(false) })
+    if (wasSourceMode) enterSourceMode(content, sourceScrollRatio)
+  }
 }
 
 async function init(): Promise<void> {

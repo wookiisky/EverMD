@@ -15,13 +15,14 @@ import { footnoteDefinitions } from './footnotes'
 import { selectionHTMLFrom } from './clean-html'
 import { renderWholeDocument, restoreViewport } from '../print-layout'
 
-import { headingFlashEffect, setCleanExport as setCleanExportEffect, setDocumentFileUrlEffect, documentFileUrlField, primeDocumentFileUrl } from './live-preview'
+import { cleanExportField, headingFlashEffect, setCleanExport as setCleanExportEffect, setDocumentFileUrlEffect, documentFileUrlField, primeDocumentFileUrl } from './live-preview'
 import { runFormatCommand as runFormat, type FormatCommandId } from './format-commands'
 import { isChinese } from '../ui-language'
 import appConfig from '../../shared/app-config.json'
 import { documentAnchor } from './document-anchor'
 import { isDiagramZoomed } from './mermaid-bridge'
 import { hideBlankLinesField, setHideBlankLinesEffect } from './blank-line-visibility'
+import { codeFoldsIntersect } from './code-folding'
 
 // katex 的样式表仍要引，公式 widget 里渲出来的 HTML 靠它排版。
 import 'katex/dist/katex.min.css'
@@ -463,8 +464,10 @@ async function writeRichCopy(
   ranges: readonly SelectionRange[],
   text: string,
 ): Promise<void> {
+  const doc = view.state.doc
   try {
     if (!(await renderWholeDocument())) return
+    if (view.state.doc !== doc || codeFoldsIntersect(view.state, ranges[0].from, ranges[ranges.length - 1].to)) return
     const html = selectionHTML(view, ranges)
     if (!html) return
     await navigator.clipboard.write([
@@ -503,6 +506,8 @@ function setupRichCopy(root: HTMLElement): void {
     if (ranges.length === 0) return
     const text = ranges.map((range) => view.state.sliceDoc(range.from, range.to)).join('\n')
     event.clipboardData?.setData('text/plain', text)
+    // 富文本来自可见 DOM，跨过折叠时只保留上面从缓冲区取得的完整原文。
+    if (codeFoldsIntersect(view.state, ranges[0].from, ranges[ranges.length - 1].to)) return
     if (selectionRendered(view)) {
       const html = selectionHTML(view, ranges)
       if (html) event.clipboardData?.setData('text/html', html)
@@ -686,7 +691,12 @@ export function setEditorHideBlankLines(enabled: boolean): void {
 // 多个标签共用一个编辑器实例。编辑器状态带着文档、选区和撤销栈，
 // 所以按标签把它存下来，才是每个标签各有各的撤销历史，而不是共用一个栈。
 export function getEditorState(): EditorState | null {
-  return handle?.getView()?.state ?? null
+  const state = handle?.getView()?.state
+  if (!state) return null
+  // 导出只改变眼前的布局，标签保存用户折叠的视图。
+  return state.field(cleanExportField)
+    ? state.update({ effects: setCleanExportEffect.of(false) }).state
+    : state
 }
 
 // 恢复一份存下来的状态。切回某个标签时用它，这条路不能绕 markdown，

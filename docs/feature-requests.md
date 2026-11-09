@@ -44,6 +44,11 @@ The two items below are the ones actually blocking us. Everything else on this p
 
 ## Implemented On Main
 
+### 代码块折叠
+
+- 长代码块可以整块收起，保留语言标记、复制和展开入口。JSON、YAML、JavaScript、TypeScript、Python、HTML 和 CSS 支持逐层收起多行结构。
+- 折叠只影响当前标签的渲染视图，搜索命中隐藏内容时自动展开。源码、代码块复制和导出仍使用完整内容。
+
 ### 标签页与文件列表悬停显示完整路径
 
 **来源：** 用户需求（2026-11-03），已通过 `--go` 确认执行。

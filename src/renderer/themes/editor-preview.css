@@ -429,6 +429,41 @@
   color: var(--text-color);
 }
 
+.cm-content .code-fold-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.4em;
+  height: 1.25em;
+  margin-inline: 0.15em;
+  padding: 0;
+  vertical-align: middle;
+  border: 0;
+  border-radius: 3px;
+  background: none;
+  color: color-mix(in srgb, currentColor 74%, transparent);
+  font: inherit;
+  cursor: pointer;
+}
+
+.cm-content .code-fold-btn svg {
+  width: 1em;
+  height: 1em;
+  pointer-events: none;
+}
+
+.cm-content .code-fold-btn[aria-expanded='false'] svg {
+  transform: rotate(-90deg);
+}
+
+.cm-content .code-fold-btn:is(:hover, :focus-visible, [aria-expanded='false']) {
+  color: inherit;
+}
+
+.cm-content .code-fold-btn:focus-visible {
+  outline: 1px solid currentColor;
+}
+
 /* ======= 链接 ======= */
 
 /*

@@ -15,6 +15,7 @@ import { setSearchHighlight } from './search-highlight'
 import { getUiLanguage, type UiLanguage } from '../ui-language'
 import { SourceInputEvent } from './editor-source-input'
 import { documentText } from './document-text'
+import { revealCodeFolds } from './code-folding'
 
 export class SearchPanel {
   private container: HTMLDivElement
@@ -327,7 +328,9 @@ export class SearchPanel {
     })
     const effects: StateEffect<unknown>[] = [setSearchHighlight.of(builder.finish())]
     const current = this.matches[this.currentIndex]
-    if (scroll && current) effects.push(EditorView.scrollIntoView(current.from, { y: 'center' }))
+    if (scroll && current) {
+      effects.push(revealCodeFolds.of(current), EditorView.scrollIntoView(current.from, { y: 'center' }))
+    }
     view.dispatch({ effects })
   }
 
